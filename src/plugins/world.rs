@@ -4,6 +4,8 @@ use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_rapier3d::prelude::*;
 
 const WORLD_WIDTH: f32 = 100.0;
+const WALL_WIDTH: f32 = 10.0;
+const WALL_HEIGHT: f32 = 50.0;
 
 pub struct WorldPlugin;
 
@@ -43,7 +45,39 @@ fn setup_world(
             transform: Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)),
             ..default()
         },
-        Collider::cuboid(WORLD_WIDTH / 2.0, 10.0, WORLD_WIDTH / 2.0),
+        Collider::compound(vec![
+            // Floor
+            (
+                Vec3::new(0.0, 0.0, 0.0),
+                Quat::IDENTITY,
+                Collider::cuboid(WORLD_WIDTH / 2.0, 10.0, WORLD_WIDTH / 2.0),
+            ),
+            // Walls
+            // Wall X_NEG_HALF, Z_0
+            (
+                Vec3::new(-WORLD_WIDTH / 2.0, WALL_HEIGHT / 2.0, 0.0),
+                Quat::IDENTITY,
+                Collider::cuboid(WALL_WIDTH / 2.0, WALL_HEIGHT / 2.0, WORLD_WIDTH / 2.0),
+            ),
+            // Wall X_POS_HALF, Z_0
+            (
+                Vec3::new(WORLD_WIDTH / 2.0, WALL_HEIGHT / 2.0, 0.0),
+                Quat::IDENTITY,
+                Collider::cuboid(WALL_WIDTH / 2.0, WALL_HEIGHT / 2.0, WORLD_WIDTH / 2.0),
+            ),
+            // Wall X_0, Z_NEG_HALF
+            (
+                Vec3::new(0.0, WALL_HEIGHT / 2.0, -WORLD_WIDTH / 2.0),
+                Quat::IDENTITY,
+                Collider::cuboid(WORLD_WIDTH / 2.0, WALL_HEIGHT / 2.0, WALL_WIDTH / 2.0),
+            ),
+            // Wall X_0, Z_POS_HALF
+            (
+                Vec3::new(0.0, WALL_HEIGHT / 2.0, WORLD_WIDTH / 2.0),
+                Quat::IDENTITY,
+                Collider::cuboid(WORLD_WIDTH / 2.0, WALL_HEIGHT / 2.0, WALL_WIDTH / 2.0),
+            ),
+        ]),
         RigidBody::Fixed,
     ));
 }
