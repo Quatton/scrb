@@ -8,7 +8,10 @@ bevy = "0.13.2"
 bevy_asset_loader = "0.20.2"
 bevy_atmosphere = "0.9.1"
 bevy_panorbit_camera = "0.18.0"
-bevy_rapier2d = { version = "0.26.0", features = ["debug-render-2d"] }
+bevy_rapier3d = { version = "0.26.0", features = [
+  "simd-stable",
+  "debug-render-3d",
+] }
 rand = "0.8.5"
 
 # Enable a small amount of optimization in debug mode
