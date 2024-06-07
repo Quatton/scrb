@@ -10,6 +10,10 @@ pub struct WorldPlugin;
 impl Plugin for WorldPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((AtmospherePlugin, PanOrbitCameraPlugin))
+            .insert_resource(AmbientLight {
+                color: Color::WHITE,
+                brightness: 200.0,
+            })
             .add_systems(Startup, (setup_camera, setup_world));
     }
 }
