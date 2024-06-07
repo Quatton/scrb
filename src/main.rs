@@ -9,6 +9,6 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_plugins(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugins(RapierDebugRenderPlugin::default())
-        .add_plugins((WorldPlugin, PlayerPlugin))
+        .add_plugins((CustomAssetPlugin, WorldPlugin, PlayerPlugin))
         .run();
 }
