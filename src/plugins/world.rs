@@ -3,7 +3,7 @@ use bevy_atmosphere::plugin::{AtmosphereCamera, AtmospherePlugin};
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_rapier3d::prelude::*;
 
-const WORLD_WIDTH: f32 = 200.0;
+const WORLD_WIDTH: f32 = 100.0;
 
 pub struct WorldPlugin;
 
@@ -17,7 +17,7 @@ impl Plugin for WorldPlugin {
 fn setup_camera(mut commands: Commands) {
     commands.spawn((
         Camera3dBundle {
-            transform: Transform::from_translation(Vec3::new(0.0, 100.0, 100.0))
+            transform: Transform::from_translation(Vec3::new(0.0, 30.0, 100.0))
                 .looking_at(Vec3::ZERO, Vec3::Y),
             ..default()
         },
