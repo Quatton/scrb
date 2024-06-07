@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use crate::plugins::assets::AssetLoadingState;
-use bevy::{gltf, prelude::*, transform};
+use bevy::{gltf, prelude::*};
 use bevy_rapier3d::prelude::*;
 
 use crate::plugins::assets::player_assets::*;
