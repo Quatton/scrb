@@ -6,6 +6,8 @@ use bevy_rapier3d::prelude::*;
 
 use crate::plugins::assets::player_assets::*;
 
+use super::ui::TypingState;
+
 const PLAYER_RADIUS: f32 = 1.0;
 const PLAYER_HEIGHT: f32 = 1.0;
 const PLAYER_BASE_SPEED: f32 = 2.0;
@@ -17,10 +19,9 @@ impl Plugin for PlayerPlugin {
         app.add_systems(OnEnter(AssetLoadingState::Next), setup_player)
             .add_systems(
                 Update,
-                (
-                    // setup_scene_once_loaded.run_if(in_state(AssetLoadingState::Next)),
-                    kb_control.run_if(in_state(AssetLoadingState::Next)),
-                ),
+                kb_control
+                    .run_if(in_state(AssetLoadingState::Next))
+                    .run_if(in_state(TypingState::IsMoving)),
             );
     }
 }
@@ -84,7 +85,7 @@ fn kb_control(
         let direction = (transform.rotation * Vec3::Z).reject_from_normalized(Vec3::Y);
         // let perpen_direction = (transform.rotation * Vec3::X).reject_from_normalized(Vec3::Y);
 
-        if keyboard_input.just_pressed(KeyCode::Space) {
+        if keyboard_input.just_pressed(KeyCode::Space) && transform.translation.y < 10.5 {
             state = PlayerState::Jumping;
             ext.impulse = Vec3::Y * 100.0;
         }

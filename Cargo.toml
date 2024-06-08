@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bevy = "0.13.2"
+bevy = { version = "0.13.2" }
 bevy_asset_loader = "0.20.2"
 bevy_atmosphere = "0.9.1"
 bevy_panorbit_camera = "0.18.0"
@@ -13,6 +13,16 @@ bevy_rapier3d = { version = "0.26.0", features = [
   "debug-render-3d",
 ] }
 rand = "0.8.5"
+
+# UI
+bevy_lunex = { version = "0.1.0-alpha", features = ["picking"] }
+bevy_mod_picking = { version = "0.18.2", default_features = false, features = [
+  "debug",
+  "selection",
+  "highlight",
+] }
+bevy_eventlistener = { version = "0.7.0" }
+bevy_simple_text_input = "0.7.0"
 
 # Enable a small amount of optimization in debug mode
 [profile.dev]
