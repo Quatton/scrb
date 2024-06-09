@@ -1,9 +1,7 @@
-mod plugins;
-
 use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 use bevy_simple_text_input::TextInputPlugin;
-use plugins::prelude::*;
+use scrb::plugins::prelude::*;
 
 fn main() {
     App::new()

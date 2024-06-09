@@ -1,8 +1,8 @@
 use std::time::Duration;
 
-use crate::plugins::assets::AssetLoadingState;
+use crate::{components::core::LockedAxesBundle, plugins::assets::AssetLoadingState};
 use bevy::{gltf, prelude::*};
-use bevy_rapier3d::prelude::*;
+use bevy_rapier3d::{na::ComplexField, prelude::*};
 
 use crate::plugins::assets::player_assets::*;
 
@@ -10,7 +10,7 @@ use super::ui::TypingState;
 
 const PLAYER_RADIUS: f32 = 1.0;
 const PLAYER_HEIGHT: f32 = 1.0;
-const PLAYER_BASE_SPEED: f32 = 2.0;
+const PLAYER_BASE_SPEED: f32 = 20.0;
 
 pub struct PlayerPlugin;
 
@@ -45,69 +45,98 @@ impl Default for PlayerState {
     }
 }
 
-fn setup_player(mut commands: Commands, player_assets: Res<PlayerAssets>) {
+fn setup_player(
+    mut commands: Commands,
+    player_assets: Res<PlayerAssets>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
     commands
         .spawn((
             SceneBundle {
                 scene: player_assets.model.clone_weak(),
-                transform: Transform::from_translation(Vec3::new(0.0, 20.0, 0.0)),
+                transform: Transform::from_translation(Vec3::new(0.0, 12.0, 0.0)),
                 ..default()
             },
             RigidBody::Dynamic,
             Player::default(),
-            LockedAxes::ROTATION_LOCKED_X | LockedAxes::ROTATION_LOCKED_Z,
+            LockedAxesBundle::player(),
             ExternalImpulse::default(),
             ColliderMassProperties::Density(1.0),
             GravityScale(3.0),
+            Velocity::default(),
         ))
         .with_children(|p| {
             p.spawn((
                 Collider::capsule_y(PLAYER_HEIGHT / 2.0, PLAYER_RADIUS),
                 Transform::from_translation(Vec3::new(0.0, PLAYER_HEIGHT, 0.0)),
             ));
+
+            p.spawn(SpotLightBundle {
+                transform: Transform::from_xyz(0.0, 10.0, 0.0).looking_at(Vec3::ZERO, Vec3::Y),
+                spot_light: SpotLight {
+                    intensity: 1_000_000.0,           // lumens
+                    color: Color::rgb(1.0, 0.9, 0.7), // candle light
+                    shadows_enabled: true,
+                    inner_angle: std::f32::consts::FRAC_PI_6,
+                    outer_angle: std::f32::consts::FRAC_PI_3,
+                    ..default()
+                },
+                ..default()
+            });
         });
 }
 
 fn kb_control(
     keyboard_input: Res<ButtonInput<KeyCode>>,
-    mut query: Query<(&mut Player, &mut Transform, &mut ExternalImpulse)>,
+    mut query: Query<(
+        &mut Player,
+        &mut Transform,
+        &mut ExternalImpulse,
+        &mut Velocity,
+    )>,
     mut animation_players: Query<&mut AnimationPlayer>,
     player_assets: Res<PlayerAssets>,
     gltf_assets: Res<Assets<gltf::Gltf>>,
 ) {
-    for (mut player, mut transform, mut ext) in query.iter_mut() {
+    for (mut player, mut transform, mut ext, mut velocity) in query.iter_mut() {
         let mut state = if transform.translation.y < 10.5 {
             PlayerState::Idle
         } else {
             PlayerState::Jumping
         };
 
-        let direction = (transform.rotation * Vec3::Z).reject_from_normalized(Vec3::Y);
-        // let perpen_direction = (transform.rotation * Vec3::X).reject_from_normalized(Vec3::Y);
+        if keyboard_input.any_just_released([KeyCode::KeyA, KeyCode::KeyD]) {
+            state = PlayerState::Idle;
+            velocity.linvel.x = 0.0;
+        }
 
         if keyboard_input.just_pressed(KeyCode::Space) && transform.translation.y < 10.5 {
             state = PlayerState::Jumping;
-            ext.impulse = Vec3::Y * 100.0;
+            velocity.linvel.y = 10.0;
         }
 
-        if keyboard_input.pressed(KeyCode::KeyW) {
-            state = PlayerState::Walk;
-            transform.translation += direction * PLAYER_BASE_SPEED * 0.1;
-        }
+        // if keyboard_input.pressed(KeyCode::KeyW) {
+        //     state = PlayerState::Walk;
+        //     transform.translation += direction * PLAYER_BASE_SPEED * 0.1;
+        // }
 
-        if keyboard_input.pressed(KeyCode::KeyS) {
-            state = PlayerState::Walk;
-            transform.translation -= direction * PLAYER_BASE_SPEED * 0.1;
-        }
+        // if keyboard_input.pressed(KeyCode::KeyS) {
+        //     state = PlayerState::Walk;
+        //     transform.translation -= direction * PLAYER_BASE_SPEED * 0.1;
+        // }
 
         if keyboard_input.pressed(KeyCode::KeyA) {
             state = PlayerState::Walk;
-            transform.rotation *= Quat::from_rotation_y(0.05);
+            transform.rotation = Quat::from_rotation_y(-std::f32::consts::FRAC_PI_2);
+            velocity.linvel.x = -PLAYER_BASE_SPEED;
         }
 
         if keyboard_input.pressed(KeyCode::KeyD) {
             state = PlayerState::Walk;
-            transform.rotation *= Quat::from_rotation_y(-0.05);
+            // point the player to positive x-axis
+            transform.rotation = Quat::from_rotation_y(std::f32::consts::FRAC_PI_2);
+            velocity.linvel.x = PLAYER_BASE_SPEED;
         }
 
         if player.state != state {
