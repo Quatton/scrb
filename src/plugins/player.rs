@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use crate::{components::core::LockedAxesBundle, plugins::assets::AssetLoadingState};
 use bevy::{gltf, prelude::*};
-use bevy_rapier3d::{na::ComplexField, prelude::*};
+use bevy_rapier3d::prelude::*;
 
 use crate::plugins::assets::player_assets::*;
 
@@ -45,12 +45,7 @@ impl Default for PlayerState {
     }
 }
 
-fn setup_player(
-    mut commands: Commands,
-    player_assets: Res<PlayerAssets>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
+fn setup_player(mut commands: Commands, player_assets: Res<PlayerAssets>) {
     commands
         .spawn((
             SceneBundle {
@@ -99,7 +94,7 @@ fn kb_control(
     player_assets: Res<PlayerAssets>,
     gltf_assets: Res<Assets<gltf::Gltf>>,
 ) {
-    for (mut player, mut transform, mut ext, mut velocity) in query.iter_mut() {
+    for (mut player, mut transform, mut _ext, mut velocity) in query.iter_mut() {
         let mut state = if transform.translation.y < 10.5 {
             PlayerState::Idle
         } else {
