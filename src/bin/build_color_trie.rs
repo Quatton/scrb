@@ -1,4 +1,4 @@
-use scrb::components::color::{get_color_from_hex, Modifier, Trie};
+use scrb::components::modifier::{get_color_from_hex, Modifier, Trie};
 use serde_json::Result;
 use std::{fs::OpenOptions, str::FromStr};
 

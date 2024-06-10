@@ -4,8 +4,8 @@ use bevy_rapier3d::prelude::*;
 use bevy_simple_text_input::{TextInputBundle, TextInputSubmitEvent};
 
 use crate::components::{
-    color::{Dictionary, Modifier},
     core::LockedAxesBundle,
+    modifier::{Dictionary, Modifier},
 };
 
 const BORDER_COLOR_ACTIVE: Color = Color::rgb(0.75, 0.52, 0.99);

@@ -1,7 +1,7 @@
 use bevy::{gltf::Gltf, prelude::*};
 use bevy_asset_loader::prelude::*;
 
-use crate::components::color::Dictionary;
+use crate::components::modifier::Dictionary;
 
 #[derive(Clone, Eq, PartialEq, Debug, Hash, Default, States)]
 pub enum AssetLoadingState {

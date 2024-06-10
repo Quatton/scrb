@@ -1,4 +1,4 @@
-use scrb::components::color::{Modifier, Trie};
+use scrb::components::modifier::{Modifier, Trie};
 
 use std::str::FromStr;
 
