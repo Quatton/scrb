@@ -112,6 +112,25 @@ fn listener(
                         transform.scale = Vec3::splat(scale);
                         transform.translation.y += scale * 0.5;
                     }
+                    Modifier::ShinyModifier(shininess) => {
+                        material.perceptual_roughness = if shininess < 0.089 {
+                            0.089
+                        } else if shininess > 1.0 {
+                            1.0
+                        } else {
+                            shininess
+                        };
+
+                        let reflectance = 1.0 - shininess;
+
+                        material.reflectance = if reflectance < 0.0 {
+                            0.0
+                        } else if reflectance > 1.0 {
+                            1.0
+                        } else {
+                            reflectance
+                        };
+                    }
                 }
             }
         }

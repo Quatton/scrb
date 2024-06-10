@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 pub enum Modifier {
     ColorModifier(Color),
     ScaleModifier(f32),
+    ShinyModifier(f32),
 }
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ModifierName {
