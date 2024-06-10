@@ -106,7 +106,7 @@ fn kb_control(
             velocity.linvel.x = 0.0;
         }
 
-        if keyboard_input.just_pressed(KeyCode::Space) && transform.translation.y < 10.5 {
+        if keyboard_input.pressed(KeyCode::Space) {
             state = PlayerState::Jumping;
             velocity.linvel.y = 10.0;
         }
