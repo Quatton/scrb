@@ -1,13 +1,19 @@
-use scrb::components::color::{ColorName, Trie};
+use scrb::components::color::{get_color_from_hex, Modifier, Trie};
 use serde_json::Result;
 use std::{fs::OpenOptions, str::FromStr};
+
+#[derive(serde::Deserialize)]
+struct ColorName {
+    name: String,
+    hex: String,
+}
 
 fn main() -> Result<()> {
     // load colornames.json
 
     let file = OpenOptions::new()
         .read(true)
-        .open("colornames.json")
+        .open("raw_assets/colornames.json")
         .unwrap();
 
     let data: Vec<ColorName> = serde_json::from_reader(file)?;
@@ -23,7 +29,10 @@ fn main() -> Result<()> {
             continue;
         }
 
-        root.insert(&name, color.hex);
+        root.insert(
+            &name,
+            Modifier::ColorModifier(get_color_from_hex(&color.hex)),
+        );
     }
 
     // export the trie to a file nested with folders

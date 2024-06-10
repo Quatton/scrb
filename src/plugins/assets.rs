@@ -1,7 +1,7 @@
 use bevy::{gltf::Gltf, prelude::*};
 use bevy_asset_loader::prelude::*;
 
-use crate::components::color::ColorDictionary;
+use crate::components::color::Dictionary;
 
 #[derive(Clone, Eq, PartialEq, Debug, Hash, Default, States)]
 pub enum AssetLoadingState {
@@ -39,5 +39,5 @@ pub struct PlayerAssets {
 }
 
 fn load_dictionary(mut commands: Commands) {
-    commands.insert_resource(ColorDictionary::new());
+    commands.insert_resource(Dictionary::new());
 }

@@ -3,7 +3,10 @@ use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 use bevy_simple_text_input::{TextInputBundle, TextInputSubmitEvent};
 
-use crate::components::{color::ColorDictionary, core::LockedAxesBundle};
+use crate::components::{
+    color::{Dictionary, Modifier},
+    core::LockedAxesBundle,
+};
 
 const BORDER_COLOR_ACTIVE: Color = Color::rgb(0.75, 0.52, 0.99);
 const TEXT_COLOR: Color = Color::rgb(0.9, 0.9, 0.9);
@@ -78,20 +81,14 @@ fn listener(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut dictionary: ResMut<ColorDictionary>,
+    mut dictionary: ResMut<Dictionary>,
 ) {
     for event in events.read() {
         let TextInputSubmitEvent { value, .. } = event;
-        let parts: Vec<&str> = value.splitn(2, ' ').collect();
-        let adj = parts[0];
-        let noun = parts[1];
+        let mut parts = value.split_whitespace().rev();
 
-        let mut material = StandardMaterial::default();
+        let noun = parts.next().unwrap_or("ball");
 
-        if let Some(color) = dictionary.search(adj) {
-            material.base_color = color;
-        }
-        // this should impl Into<Mesh>
         let shape: Mesh = match noun {
             "cube" => Mesh::from(Cuboid::new(1.0, 1.0, 1.0)),
             "ball" => Mesh::from(Sphere::new(0.5)),
@@ -103,6 +100,17 @@ fn listener(
             "ball" => Collider::ball(0.5),
             _ => Collider::ball(0.5),
         };
+
+        let mut material = StandardMaterial::default();
+
+        for adj in parts {
+            if let Some(entry) = dictionary.search(adj) {
+                match entry.modifier {
+                    Modifier::ColorModifier(color) => material.base_color = color,
+                }
+            }
+        }
+        // this should impl Into<Mesh>
 
         commands.spawn((
             PbrBundle {
