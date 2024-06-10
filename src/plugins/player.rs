@@ -106,20 +106,16 @@ fn kb_control(
             velocity.linvel.x = 0.0;
         }
 
-        if keyboard_input.pressed(KeyCode::Space) {
+        if keyboard_input.any_pressed([KeyCode::Space, KeyCode::KeyW]) {
             state = PlayerState::Jumping;
             velocity.linvel.y = 10.0;
         }
 
-        // if keyboard_input.pressed(KeyCode::KeyW) {
-        //     state = PlayerState::Walk;
-        //     transform.translation += direction * PLAYER_BASE_SPEED * 0.1;
-        // }
-
-        // if keyboard_input.pressed(KeyCode::KeyS) {
-        //     state = PlayerState::Walk;
-        //     transform.translation -= direction * PLAYER_BASE_SPEED * 0.1;
-        // }
+        if keyboard_input.just_pressed(KeyCode::KeyS) {
+            state = PlayerState::Idle;
+            velocity.linvel.y = -10.0;
+            transform.rotation = Quat::from_rotation_y(0.0);
+        }
 
         if keyboard_input.pressed(KeyCode::KeyA) {
             state = PlayerState::Walk;

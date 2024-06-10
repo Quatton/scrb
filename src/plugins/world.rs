@@ -46,7 +46,10 @@ fn camera_tracking(
     let player_transform = player_query.single();
     let (mut camera, _) = query.single_mut();
     camera.translation = player_transform.translation + Vec3::new(0.0, LOOKUP_OFFSET, 30.0);
-    *camera = camera.looking_at(player_transform.translation, Vec3::Y);
+    *camera = camera.looking_at(
+        player_transform.translation + Vec3::new(0.0, LOOKUP_OFFSET, 0.0),
+        Vec3::Y,
+    );
 }
 
 fn teleport_offlimit_objects(mut query: Query<&mut Transform, With<FallPrevention>>) {
