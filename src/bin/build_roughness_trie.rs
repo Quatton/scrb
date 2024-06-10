@@ -5,28 +5,25 @@ use std::str::FromStr;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // build a trie from the color names
 
-    let scales = [
-        vec!["rough", "uneven", "jagged", "bumpy"], // Added synonyms and related concepts
-        vec!["smooth", "even", "flat", "uniform"],  // Added antonyms and related concepts
-        vec!["iron", "steel", "metal", "aluminum", "gold"], // Added materials that are often glossy
-    ];
+    let rough = vec!["rough", "uneven", "jagged", "bumpy"]; // Added synonyms and related concepts
+    let smooth = vec!["smooth", "even", "flat", "uniform"]; // Added antonyms and related concepts
+    let metallic = vec!["iron", "steel", "metal", "aluminum", "golden"]; // Added materials that are often glossy
 
     let mut root = Trie::new();
 
-    for (idx, roughness) in scales.iter().enumerate() {
-        // rough is 1 and iron is 0.089, we will interpolate between them
-
-        let calibrated_roughness = 1.0 - (0.911_f32 * idx as f32 / (scales.len() - 1) as f32);
-
-        for roughness_word in roughness {
-            root.insert(
-                roughness_word,
-                Modifier::ShinyModifier(calibrated_roughness),
-            );
-        }
+    for rough_word in rough {
+        root.insert(rough_word, Modifier::RoughnessModifier(1.0));
     }
 
-    // export the trie to a file nested with folders
+    for smooth_word in smooth {
+        root.insert(smooth_word, Modifier::RoughnessModifier(0.089));
+    }
+
+    for metallic_word in metallic {
+        root.insert(metallic_word, Modifier::RoughnessModifier(0.089));
+        root.insert(metallic_word, Modifier::MetallicModifier(1.0));
+        root.insert(metallic_word, Modifier::ReflectanceModifier(0.5));
+    }
 
     let root_dir_path = std::path::PathBuf::from_str("assets/dictionary")?;
     std::fs::create_dir_all(&root_dir_path)?;

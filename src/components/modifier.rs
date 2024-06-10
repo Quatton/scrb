@@ -10,16 +10,18 @@ use bevy::prelude::*;
 use bevy::render::color::Color;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum Modifier {
     ColorModifier(Color),
     ScaleModifier(f32),
-    ShinyModifier(f32),
+    RoughnessModifier(f32),
+    MetallicModifier(f32),
+    ReflectanceModifier(f32),
 }
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ModifierName {
     pub name: String,
-    pub modifier: Modifier,
+    pub modifier: Vec<Modifier>,
 }
 
 pub fn get_color_from_hex(hex: &str) -> Color {
@@ -51,13 +53,16 @@ impl Dictionary {
         }
     }
 
-    pub fn search(&mut self, word: &str) -> Option<ModifierName> {
+    pub fn search(&mut self, word: &str) -> Vec<ModifierName> {
         // check if the word is in the dictionary
         let search_res = self.trie.lock().unwrap().search(word);
 
         match search_res {
-            Some(data) => Some(data),
-            None => self.trie.lock().unwrap().import(word),
+            Some(data) => vec![data],
+            None => match self.trie.lock().unwrap().import(word) {
+                Some(data) => vec![data],
+                None => vec![],
+            },
         }
     }
 }
@@ -81,12 +86,21 @@ impl Trie {
         for c in word.chars() {
             current = current.children.entry(c).or_default();
         }
-        let data = ModifierName {
-            name: word.to_string(),
-            modifier: data,
-        };
-        current.data = Some(data.clone());
-        data
+
+        match current.data {
+            Some(ref mut modifier_name) => {
+                modifier_name.modifier.push(data);
+                modifier_name.clone()
+            }
+            None => {
+                let modifier_name = ModifierName {
+                    name: word.to_string(),
+                    modifier: vec![data],
+                };
+                current.data = Some(modifier_name.clone());
+                modifier_name
+            }
+        }
     }
 
     pub fn import(&mut self, word: &str) -> Option<ModifierName> {
@@ -103,9 +117,12 @@ impl Trie {
         if file_path.exists() {
             let file = OpenOptions::new().read(true).open(file_path).unwrap();
 
-            let data: Modifier = ron::de::from_reader(file).unwrap();
+            let data: Vec<Modifier> = ron::de::from_reader(file).unwrap();
 
-            return Some(self.insert(word, data));
+            return Some(ModifierName {
+                name: word.to_string(),
+                modifier: data,
+            });
         }
 
         None
@@ -134,22 +151,37 @@ impl Trie {
             std::fs::create_dir_all(&new_path).unwrap();
 
             if node.data.is_some() {
-                let data = node.data.as_ref().unwrap();
-
-                let content = ron::to_string(&data.modifier).unwrap();
-
+                let mut data = node.data.as_ref().unwrap().clone();
                 let mut file_path = new_path.clone();
                 file_path.push(&data.name);
 
-                // write the hex value to a file
-                let mut file = OpenOptions::new()
+                if let Ok(file_read) = OpenOptions::new()
+                    .read(true)
+                    .open(file_path.with_extension("ron"))
+                {
+                    let existing_data: Vec<Modifier> =
+                        ron::de::from_reader(&file_read).unwrap_or_default();
+
+                    if !existing_data.is_empty() {
+                        for modifier in &existing_data {
+                            if !data.modifier.contains(modifier) {
+                                data.modifier.push(modifier.clone());
+                            }
+                        }
+                    }
+                }
+
+                let mut file_write = OpenOptions::new()
                     .write(true)
                     .create(true)
                     .truncate(true)
                     .open(file_path.with_extension("ron"))
                     .unwrap();
 
-                file.write_all(content.as_bytes()).unwrap();
+                let content =
+                    ron::ser::to_string_pretty(&data.modifier, Default::default()).unwrap();
+
+                file_write.write_all(content.as_bytes()).unwrap();
             }
 
             node.export(&new_path);

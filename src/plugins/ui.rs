@@ -105,31 +105,41 @@ fn listener(
         let mut transform = Transform::from_xyz(0.0, 20.0, 0.0);
 
         for adj in parts {
-            if let Some(entry) = dictionary.search(adj) {
-                match entry.modifier {
-                    Modifier::ColorModifier(color) => material.base_color = color,
-                    Modifier::ScaleModifier(scale) => {
-                        transform.scale = Vec3::splat(scale);
-                        transform.translation.y += scale * 0.5;
-                    }
-                    Modifier::ShinyModifier(shininess) => {
-                        material.perceptual_roughness = if shininess < 0.089 {
-                            0.089
-                        } else if shininess > 1.0 {
-                            1.0
-                        } else {
-                            shininess
-                        };
-
-                        let reflectance = 1.0 - shininess;
-
-                        material.reflectance = if reflectance < 0.0 {
-                            0.0
-                        } else if reflectance > 1.0 {
-                            1.0
-                        } else {
-                            reflectance
-                        };
+            if let Some(entry) = dictionary.search(adj).first() {
+                for modifier in entry.modifier.clone() {
+                    match modifier {
+                        Modifier::ColorModifier(color) => material.base_color = color,
+                        Modifier::ScaleModifier(scale) => {
+                            transform.scale = Vec3::splat(scale);
+                            transform.translation.y += scale * 0.5;
+                        }
+                        Modifier::RoughnessModifier(roughness) => {
+                            material.perceptual_roughness = if roughness < 0.089 {
+                                0.089
+                            } else if roughness > 1.0 {
+                                1.0
+                            } else {
+                                roughness
+                            };
+                        }
+                        Modifier::MetallicModifier(metallic) => {
+                            material.metallic = if metallic < 0.0 {
+                                0.0
+                            } else if metallic > 1.0 {
+                                1.0
+                            } else {
+                                metallic
+                            };
+                        }
+                        Modifier::ReflectanceModifier(reflectance) => {
+                            material.reflectance = if reflectance < 0.0 {
+                                0.0
+                            } else if reflectance > 1.0 {
+                                1.0
+                            } else {
+                                reflectance
+                            };
+                        }
                     }
                 }
             }
