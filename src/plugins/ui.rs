@@ -102,11 +102,16 @@ fn listener(
         };
 
         let mut material = StandardMaterial::default();
+        let mut transform = Transform::from_xyz(0.0, 20.0, 0.0);
 
         for adj in parts {
             if let Some(entry) = dictionary.search(adj) {
                 match entry.modifier {
                     Modifier::ColorModifier(color) => material.base_color = color,
+                    Modifier::ScaleModifier(scale) => {
+                        transform.scale = Vec3::splat(scale);
+                        transform.translation.y += scale * 0.5;
+                    }
                 }
             }
         }
@@ -116,7 +121,7 @@ fn listener(
             PbrBundle {
                 mesh: meshes.add(shape),
                 material: materials.add(material),
-                transform: Transform::from_xyz(0.0, 20.0, 0.0),
+                transform,
                 ..default()
             },
             collider,
