@@ -16,12 +16,8 @@ bevy_rapier3d = { version = "0.26.0", features = [
 rand = "0.8.5"
 
 # UI
+bevy_mod_picking = { version = "0.18.2" }
 bevy_lunex = { version = "0.1.0-alpha", features = ["picking"] }
-bevy_mod_picking = { version = "0.18.2", default_features = false, features = [
-  "debug",
-  "selection",
-  "highlight",
-] }
 bevy_eventlistener = { version = "0.7.0" }
 bevy_simple_text_input = "0.7.0"
 reqwest = "0.12.4"
