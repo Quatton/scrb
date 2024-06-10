@@ -3,7 +3,7 @@ use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 use bevy_simple_text_input::{TextInputBundle, TextInputSubmitEvent};
 
-use crate::components::core::LockedAxesBundle;
+use crate::components::{color::ColorDictionary, core::LockedAxesBundle};
 
 const BORDER_COLOR_ACTIVE: Color = Color::rgb(0.75, 0.52, 0.99);
 const TEXT_COLOR: Color = Color::rgb(0.9, 0.9, 0.9);
@@ -78,6 +78,7 @@ fn listener(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut dictionary: ResMut<ColorDictionary>,
 ) {
     for event in events.read() {
         let TextInputSubmitEvent { value, .. } = event;
@@ -85,32 +86,28 @@ fn listener(
         let adj = parts[0];
         let noun = parts[1];
 
-        let color = match adj {
-            "red" => Color::rgb(1.0, 0.0, 0.0),
-            "green" => Color::rgb(0.0, 1.0, 0.0),
-            "blue" => Color::rgb(0.0, 0.0, 1.0),
-            _ => Color::rgb(1.0, 1.0, 1.0), // Default color
-        };
+        let mut material = StandardMaterial::default();
 
-        let shape = match noun {
-            "cube" => meshes.add(Cuboid::new(1.0, 1.0, 1.0)),
-            "ball" => meshes.add(Sphere::new(1.0)),
-            _ => meshes.add(Sphere::new(1.0)),
+        if let Some(color) = dictionary.search(adj) {
+            material.base_color = color;
+        }
+        // this should impl Into<Mesh>
+        let shape: Mesh = match noun {
+            "cube" => Mesh::from(Cuboid::new(1.0, 1.0, 1.0)),
+            "ball" => Mesh::from(Sphere::new(0.5)),
+            _ => Mesh::from(Sphere::new(0.5)),
         };
 
         let collider = match noun {
             "cube" => Collider::cuboid(0.5, 0.5, 0.5),
-            "ball" => Collider::ball(1.0),
-            _ => Collider::ball(1.0),
+            "ball" => Collider::ball(0.5),
+            _ => Collider::ball(0.5),
         };
 
         commands.spawn((
             PbrBundle {
-                mesh: shape,
-                material: materials.add(StandardMaterial {
-                    base_color: color,
-                    ..default()
-                }),
+                mesh: meshes.add(shape),
+                material: materials.add(material),
                 transform: Transform::from_xyz(0.0, 20.0, 0.0),
                 ..default()
             },
