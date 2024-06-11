@@ -2,8 +2,8 @@ use backends::raycast::RaycastPickable;
 use bevy::prelude::*;
 use bevy_eventlistener::event_listener::On;
 use bevy_mod_picking::prelude::*;
-use bevy_rapier3d::prelude::*;
 use bevy_simple_text_input::{TextInputBundle, TextInputSubmitEvent};
+use bevy_xpbd_3d::prelude::*;
 
 use crate::components::{
     core::LockedAxesBundle,
@@ -191,7 +191,7 @@ fn handle_spawning_object(
     };
     let collider = match noun {
         "cube" => Collider::cuboid(0.5, 0.5, 0.5),
-        "ball" => Collider::ball(0.5),
+        "ball" => Collider::sphere(0.5),
         _ => Collider::cuboid(0.5, 0.5, 0.5),
     };
     let mut material = StandardMaterial::default();
@@ -243,13 +243,16 @@ fn handle_spawning_object(
         LockedAxesBundle::default(),
         PickableBundle::default(),
         SpawnedObject,
-        ColliderMassProperties::Density(1.0),
+        ColliderDensity(1.0),
         On::<Pointer<DragStart>>::target_commands_mut(|_, cmd| {
-            cmd.insert((RigidBody::Fixed, Pickable::IGNORE, ColliderDisabled));
+            cmd.insert((RigidBody::Static, Pickable::IGNORE, ColliderDensity(0.0)));
         }), // Disable picking
         On::<Pointer<DragEnd>>::target_commands_mut(|_, cmd| {
-            cmd.insert((RigidBody::Dynamic, Pickable::default()));
-            cmd.remove::<ColliderDisabled>();
+            cmd.insert((
+                RigidBody::Dynamic,
+                Pickable::default(),
+                ColliderDensity(1.0),
+            ));
         }), // Enable picking
     ));
 
@@ -263,12 +266,15 @@ fn handle_spawning_object(
             },));
         }
         MeshOrScene::Scene(model) => {
-            ent.insert((SceneBundle {
-                scene: model,
-                transform: transform
-                    .with_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
-                ..default()
-            },));
+            ent.insert((
+                SceneBundle {
+                    scene: model,
+                    transform: transform
+                        .with_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
+                    ..default()
+                },
+                PendingCollider,
+            ));
 
             // let mesh_handle =
             //     asset_server.load(format!("models/{noun}/0/mesh.glb#Mesh0/Primitive0"));
@@ -300,15 +306,13 @@ fn attach_collider_to_scene(
             if let Ok(mesh_handle) = mesh_query.get(children) {
                 println!("mesh_handle: {:?}", mesh_handle);
                 if let Some(mesh) = meshes.get(mesh_handle) {
-                    let collider =
-                        Collider::from_bevy_mesh(mesh, &ComputedColliderShape::ConvexHull);
+                    let collider = Collider::trimesh_from_mesh(mesh);
                     // Attach collider to the entity of this same object.
+                    println!("collider: {:?}", collider);
 
                     if let Some(collider) = collider {
                         commands.entity(pending).insert(collider);
                     }
-
-                    break;
                 }
             }
         }

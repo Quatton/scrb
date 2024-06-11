@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use crate::{components::core::LockedAxesBundle, plugins::assets::AssetLoadingState};
 use bevy::{gltf, prelude::*};
-use bevy_rapier3d::prelude::*;
+use bevy_xpbd_3d::prelude::*;
 
 use crate::plugins::assets::player_assets::*;
 
@@ -57,13 +57,14 @@ fn setup_player(mut commands: Commands, player_assets: Res<PlayerAssets>) {
             Player::default(),
             LockedAxesBundle::player(),
             ExternalImpulse::default(),
-            ColliderMassProperties::Density(1.0),
+            ColliderDensity(1.0),
             GravityScale(3.0),
-            Velocity::default(),
+            LinearVelocity::default(),
+            AngularVelocity::default(),
         ))
         .with_children(|p| {
             p.spawn((
-                Collider::capsule_y(PLAYER_HEIGHT / 2.0, PLAYER_RADIUS),
+                Collider::capsule(PLAYER_HEIGHT / 2.0, PLAYER_RADIUS),
                 Transform::from_translation(Vec3::new(0.0, PLAYER_HEIGHT, 0.0)),
             ));
 
@@ -88,46 +89,49 @@ fn kb_control(
         &mut Player,
         &mut Transform,
         &mut ExternalImpulse,
-        &mut Velocity,
+        &mut LinearVelocity,
+        &mut AngularVelocity,
     )>,
     mut animation_players: Query<&mut AnimationPlayer>,
     player_assets: Res<PlayerAssets>,
     gltf_assets: Res<Assets<gltf::Gltf>>,
 ) {
-    for (mut player, mut transform, mut _ext, mut velocity) in query.iter_mut() {
+    for (mut player, mut transform, mut _ext, mut velocity, mut angvel) in query.iter_mut() {
         let mut state = if transform.translation.y < 10.5 {
             PlayerState::Idle
         } else {
             PlayerState::Jumping
         };
 
+        angvel.0 = Vec3::ZERO;
+
         if keyboard_input.any_just_released([KeyCode::KeyA, KeyCode::KeyD]) {
             state = PlayerState::Idle;
-            velocity.linvel.x = 0.0;
+            velocity.x = 0.0;
         }
 
         if keyboard_input.any_pressed([KeyCode::Space, KeyCode::KeyW]) {
             state = PlayerState::Jumping;
-            velocity.linvel.y = 10.0;
+            velocity.y = 10.0;
         }
 
         if keyboard_input.just_pressed(KeyCode::KeyS) {
             state = PlayerState::Idle;
-            velocity.linvel.y = -10.0;
+            velocity.y = -10.0;
             transform.rotation = Quat::from_rotation_y(0.0);
         }
 
         if keyboard_input.pressed(KeyCode::KeyA) {
             state = PlayerState::Walk;
             transform.rotation = Quat::from_rotation_y(-std::f32::consts::FRAC_PI_2);
-            velocity.linvel.x = -PLAYER_BASE_SPEED;
+            velocity.x = -PLAYER_BASE_SPEED;
         }
 
         if keyboard_input.pressed(KeyCode::KeyD) {
             state = PlayerState::Walk;
             // point the player to positive x-axis
             transform.rotation = Quat::from_rotation_y(std::f32::consts::FRAC_PI_2);
-            velocity.linvel.x = PLAYER_BASE_SPEED;
+            velocity.x = PLAYER_BASE_SPEED;
         }
 
         if player.state != state {

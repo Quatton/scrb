@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use bevy_rapier3d::prelude::*;
+use bevy_xpbd_3d::prelude::*;
 
 #[derive(Bundle)]
 pub struct LockedAxesBundle {
@@ -13,7 +13,7 @@ pub struct FallPrevention;
 impl Default for LockedAxesBundle {
     fn default() -> Self {
         LockedAxesBundle {
-            locked_axes: LockedAxes::TRANSLATION_LOCKED_Z,
+            locked_axes: LockedAxes::from_bits(0b001_000),
             fall_prevention: FallPrevention,
         }
     }
@@ -22,9 +22,10 @@ impl Default for LockedAxesBundle {
 impl LockedAxesBundle {
     pub fn player() -> Self {
         LockedAxesBundle {
-            locked_axes: LockedAxes::TRANSLATION_LOCKED_Z
-                | LockedAxes::ROTATION_LOCKED_X
-                | LockedAxes::ROTATION_LOCKED_Z,
+            locked_axes: LockedAxes::from_bits(0b001_101),
+            // LockedAxes::TRANSLATION_LOCKED_Z
+            //     | LockedAxes::ROTATION_LOCKED_X
+            //     | LockedAxes::ROTATION_LOCKED_Z,
             fall_prevention: FallPrevention,
         }
     }

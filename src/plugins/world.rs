@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_atmosphere::plugin::{AtmosphereCamera, AtmospherePlugin};
 use bevy_mod_picking::backends::raycast::RaycastPickable;
-use bevy_rapier3d::prelude::*;
+use bevy_xpbd_3d::prelude::*;
 use rand::Rng;
 
 use crate::components::core::FallPrevention;
@@ -82,25 +82,25 @@ fn setup_world(
         Collider::compound(vec![
             // Floor
             (
-                Vec3::new(0.0, 0.0, 0.0),
+                Vec3::new(0.0, 5.0, 0.0),
                 Quat::IDENTITY,
-                Collider::cuboid(WORLD_WIDTH / 2.0, 10.0, WALL_WIDTH / 2.0),
+                Collider::cuboid(WORLD_WIDTH, 10.0, WALL_WIDTH),
             ),
             // Walls
             // Wall X_NEG_HALF
             (
                 Vec3::new(-(WORLD_WIDTH + WALL_WIDTH) / 2.0, WALL_HEIGHT / 2.0, 0.0),
                 Quat::IDENTITY,
-                Collider::cuboid(WALL_WIDTH / 2.0, WALL_HEIGHT / 2.0, WORLD_WIDTH / 2.0),
+                Collider::cuboid(WALL_WIDTH, WALL_HEIGHT, WORLD_WIDTH),
             ),
             // Wall X_POS_HALF
             (
                 Vec3::new((WORLD_WIDTH + WALL_WIDTH) / 2.0, WALL_HEIGHT / 2.0, 0.0),
                 Quat::IDENTITY,
-                Collider::cuboid(WALL_WIDTH / 2.0, WALL_HEIGHT / 2.0, WORLD_WIDTH / 2.0),
+                Collider::cuboid(WALL_WIDTH, WALL_HEIGHT, WORLD_WIDTH),
             ),
         ]),
-        RigidBody::Fixed,
-        Friction::coefficient(0.5),
+        RigidBody::Static,
+        Friction::default(),
     ));
 }
