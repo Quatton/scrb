@@ -31,11 +31,11 @@ impl Plugin for MainUiPlugin {
         app.init_state::<TypingState>()
             .add_systems(OnEnter(TypingState::IsTyping), setup_ui_on_typing)
             .add_systems(OnExit(TypingState::IsTyping), kill_ui_on_typing)
-            .add_systems(Update, (typing_toggler, listener, update_handle_drag))
-            .add_systems(
-                Update,
-                attach_collider_to_scene.run_if(any_with_component::<PendingCollider>),
-            );
+            .add_systems(Update, (typing_toggler, listener, update_handle_drag));
+        // .add_systems(
+        //     Update,
+        //     attach_collider_to_scene.run_if(any_with_component::<PendingCollider>),
+        // );
     }
 }
 
@@ -163,20 +163,41 @@ fn handle_spawning_object(
         "ball" => MeshOrScene::Mesh(Mesh::from(Sphere::new(0.5))),
         _ => {
             if !std::path::Path::new(&format!(
+                "/Users/quatton/Documents/GitHub/scrb/assets/models/{noun}/raw_image.png"
+            ))
+            .exists()
+            {
+                std::process::Command::new("/Users/quatton/.pyenv/versions/tsr/bin/python")
+                    .arg("/Users/quatton/Documents/GitHub/TripoSR/genimg.py")
+                    .arg("--prompt")
+                    .arg(noun)
+                    .arg("--output-dir")
+                    .arg("/Users/quatton/Documents/GitHub/scrb/assets/models")
+                    .spawn()
+                    .unwrap()
+                    .wait_with_output()
+                    .unwrap();
+            }
+
+            if !std::path::Path::new(&format!(
                 "/Users/quatton/Documents/GitHub/scrb/assets/models/{noun}/0/mesh.glb"
             ))
             .exists()
             {
                 std::process::Command::new("/Users/quatton/.pyenv/versions/tsr/bin/python")
                     .arg("/Users/quatton/Documents/GitHub/TripoSR/run.py")
+                    .arg("--image")
+                    .arg(format!(
+                        "/Users/quatton/Documents/GitHub/scrb/assets/models/{noun}/raw_image.png"
+                    ))
+                    .arg("--output-dir")
+                    .arg(format!(
+                        "/Users/quatton/Documents/GitHub/scrb/assets/models/{noun}"
+                    ))
                     .arg("--mc-resolution")
                     .arg("256")
                     .arg("--model-save-format")
                     .arg("glb")
-                    .arg("--prompt")
-                    .arg(noun)
-                    .arg("--output-dir")
-                    .arg("/Users/quatton/Documents/GitHub/scrb/assets/models/")
                     .spawn()
                     .unwrap()
                     .wait_with_output()
@@ -237,7 +258,6 @@ fn handle_spawning_object(
         }
     }
     let mut ent = commands.spawn((
-        collider,
         RaycastPickable,
         RigidBody::Dynamic,
         LockedAxesBundle::default(),
@@ -250,25 +270,36 @@ fn handle_spawning_object(
         On::<Pointer<DragEnd>>::target_commands_mut(|_, cmd| {
             cmd.insert((RigidBody::Dynamic, Pickable::default()));
             cmd.remove::<ColliderDisabled>();
+            // Collider::from_bevy_mesh(mesh, &ComputedColliderShape::ConvexHull);
         }), // Enable picking
     ));
 
     match shape {
         MeshOrScene::Mesh(mesh) => {
-            ent.insert((PbrBundle {
-                mesh: meshes.add(mesh),
-                material: materials.add(material),
-                transform,
-                ..default()
-            },));
+            ent.insert((
+                PbrBundle {
+                    mesh: meshes.add(mesh),
+                    material: materials.add(material),
+                    transform,
+                    ..default()
+                },
+                collider,
+            ));
         }
         MeshOrScene::Scene(model) => {
-            ent.insert((SceneBundle {
-                scene: model,
-                transform: transform
-                    .with_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
-                ..default()
-            },));
+            ent.insert((
+                SceneBundle {
+                    scene: model,
+                    transform: transform
+                        .with_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
+                    ..default()
+                },
+                collider,
+                // AsyncSceneCollider {
+                //     shape: Some(ComputedColliderShape::TriMesh),
+                //     named_shapes: default(),
+                // },
+            ));
 
             // let mesh_handle =
             //     asset_server.load(format!("models/{noun}/0/mesh.glb#Mesh0/Primitive0"));
@@ -285,37 +316,36 @@ fn handle_spawning_object(
     }
 }
 
-fn attach_collider_to_scene(
-    mut commands: Commands,
-    scene_meshes: Query<(Entity, &Children), With<PendingCollider>>,
-    mesh_query: Query<&Handle<Mesh>>,
-    children_query: Query<&Children>,
-    meshes: Res<Assets<Mesh>>,
-) {
-    // iterate over all meshes in the scene and match them by their name.
-    for (pending, _children) in &scene_meshes {
-        println!("pending collider: {:?}", pending);
-        for children in children_query.iter_descendants(pending) {
-            println!("children: {:?}", children);
-            if let Ok(mesh_handle) = mesh_query.get(children) {
-                println!("mesh_handle: {:?}", mesh_handle);
-                if let Some(mesh) = meshes.get(mesh_handle) {
-                    let collider =
-                        Collider::from_bevy_mesh(mesh, &ComputedColliderShape::ConvexHull);
-                    // Attach collider to the entity of this same object.
+// fn attach_collider_to_scene(
+//     mut commands: Commands,
+//     scene_meshes: Query<(Entity, &Children), With<PendingCollider>>,
+//     mesh_query: Query<&Handle<Mesh>>,
+//     children_query: Query<&Children>,
+//     meshes: Res<Assets<Mesh>>,
+// ) {
+//     // iterate over all meshes in the scene and match them by their name.
+//     for (pending, _children) in &scene_meshes {
+//         println!("pending collider: {:?}", pending);
+//         for children in children_query.iter_descendants(pending) {
+//             println!("children: {:?}", children);
+//             if let Ok(mesh_handle) = mesh_query.get(children) {
+//                 println!("mesh_handle: {:?}", mesh_handle);
+//                 if let Some(mesh) = meshes.get(mesh_handle) {
+//                     let collider =
+//                     // Attach collider to the entity of this same object.
 
-                    if let Some(collider) = collider {
-                        commands.entity(pending).insert(collider);
-                    }
+//                     if let Some(collider) = collider {
+//                         commands.entity(pending).insert(collider);
+//                     }
 
-                    break;
-                }
-            }
-        }
-        // commands.entity(pending).remove::<Collider>();
-        commands.entity(pending).remove::<PendingCollider>();
-    }
-}
+//                     break;
+//                 }
+//             }
+//         }
+//         // commands.entity(pending).remove::<Collider>();
+//         commands.entity(pending).remove::<PendingCollider>();
+//     }
+// }
 
 fn update_handle_drag(
     mut events: EventReader<Pointer<Drag>>,
