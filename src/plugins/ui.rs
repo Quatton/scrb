@@ -1,3 +1,5 @@
+use std::io::Write;
+
 use backends::raycast::RaycastPickable;
 use bevy::prelude::*;
 use bevy_eventlistener::event_listener::On;
@@ -29,9 +31,18 @@ pub struct MainUiPlugin;
 impl Plugin for MainUiPlugin {
     fn build(&self, app: &mut App) {
         app.init_state::<TypingState>()
+            .add_systems(Startup, run_python_backend)
             .add_systems(OnEnter(TypingState::IsTyping), setup_ui_on_typing)
             .add_systems(OnExit(TypingState::IsTyping), kill_ui_on_typing)
-            .add_systems(Update, (typing_toggler, listener, update_handle_drag));
+            .add_systems(
+                Update,
+                (
+                    typing_toggler,
+                    command_listener,
+                    spawn_listener,
+                    update_handle_drag,
+                ),
+            );
         // .add_systems(
         //     Update,
         //     attach_collider_to_scene.run_if(any_with_component::<PendingCollider>),
@@ -82,21 +93,33 @@ fn setup_ui_on_typing(mut commands: Commands) {
         });
 }
 
-fn listener(
+fn command_listener(
     mut events: EventReader<TextInputSubmitEvent>,
     mut commands: Commands,
     everything_query: Query<(Entity, &SpawnedObject)>,
-    asset_server: Res<AssetServer>,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut dictionary: ResMut<Dictionary>,
 ) {
     for event in events.read() {
         let TextInputSubmitEvent { value, .. } = event;
 
         if value.starts_with('/') {
             handle_command(value, &mut commands, &everything_query);
-        } else {
+        }
+    }
+}
+
+fn spawn_listener(
+    mut events: EventReader<TextInputSubmitEvent>,
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut dictionary: ResMut<Dictionary>,
+    mut python_stdin: ResMut<PythonStdin>,
+) {
+    for event in events.read() {
+        let TextInputSubmitEvent { value, .. } = event;
+
+        if !value.starts_with('/') {
             handle_spawning_object(
                 value,
                 &mut dictionary,
@@ -104,6 +127,7 @@ fn listener(
                 &asset_server,
                 &mut meshes,
                 &mut materials,
+                &mut python_stdin,
             );
         }
     }
@@ -145,6 +169,32 @@ pub enum PbrOrScene {
 #[derive(Component)]
 pub struct PendingCollider;
 
+#[derive(Resource)]
+pub struct PythonStdin {
+    pub stdin: std::process::ChildStdin,
+}
+
+fn run_python_backend(mut commands: Commands) {
+    // run subprocess
+    let mut child = std::process::Command::new("/Users/quatton/.pyenv/versions/tsr/bin/python")
+        .arg("/Users/quatton/Documents/GitHub/TripoSR/realtime.py")
+        .arg("--output-dir")
+        .arg("/Users/quatton/Documents/GitHub/scrb/assets/models")
+        .arg("--pipe-to-3d")
+        .arg("--mc-resolution")
+        .arg("128")
+        // pipe stdin
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        // background this
+        .spawn()
+        .expect("failed to execute process");
+
+    commands.insert_resource(PythonStdin {
+        stdin: child.stdin.take().unwrap(),
+    });
+}
+
 fn handle_spawning_object(
     value: &str,
     dictionary: &mut ResMut<Dictionary>,
@@ -152,6 +202,7 @@ fn handle_spawning_object(
     asset_server: &Res<AssetServer>,
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
+    python_stdin: &mut ResMut<PythonStdin>,
 ) {
     let mut parts = value.split_whitespace().rev();
     if parts.clone().count() < 1 {
@@ -162,52 +213,26 @@ fn handle_spawning_object(
         "cube" => MeshOrScene::Mesh(Mesh::from(Cuboid::new(1.0, 1.0, 1.0))),
         "ball" => MeshOrScene::Mesh(Mesh::from(Sphere::new(0.5))),
         _ => {
-            if !std::path::Path::new(&format!(
-                "/Users/quatton/Documents/GitHub/scrb/assets/models/{noun}/raw_image.png"
-            ))
-            .exists()
-            {
-                std::process::Command::new("/Users/quatton/.pyenv/versions/tsr/bin/python")
-                    .arg("/Users/quatton/Documents/GitHub/TripoSR/genimg.py")
-                    .arg("--prompt")
-                    .arg(noun)
-                    .arg("--output-dir")
-                    .arg("/Users/quatton/Documents/GitHub/scrb/assets/models")
-                    .spawn()
-                    .unwrap()
-                    .wait_with_output()
-                    .unwrap();
+            if !std::path::Path::new(&format!("assets/models/{noun}/mesh.glb")).exists() {
+                let stdin = &mut python_stdin.stdin;
+                writeln!(stdin, "{}", noun).unwrap();
+
+                // poll "models" directory until the file is created
+
+                let max_wait = 60;
+                for _ in 0..max_wait {
+                    if std::path::Path::new(&format!("assets/models/{noun}/mesh.glb")).exists() {
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                }
             }
 
-            if !std::path::Path::new(&format!(
-                "/Users/quatton/Documents/GitHub/scrb/assets/models/{noun}/0/mesh.glb"
-            ))
-            .exists()
-            {
-                std::process::Command::new("/Users/quatton/.pyenv/versions/tsr/bin/python")
-                    .arg("/Users/quatton/Documents/GitHub/TripoSR/run.py")
-                    .arg("--image")
-                    .arg(format!(
-                        "/Users/quatton/Documents/GitHub/scrb/assets/models/{noun}/raw_image.png"
-                    ))
-                    .arg("--output-dir")
-                    .arg(format!(
-                        "/Users/quatton/Documents/GitHub/scrb/assets/models/{noun}"
-                    ))
-                    .arg("--mc-resolution")
-                    .arg("256")
-                    .arg("--model-save-format")
-                    .arg("glb")
-                    .spawn()
-                    .unwrap()
-                    .wait_with_output()
-                    .unwrap();
+            if std::path::Path::new(&format!("assets/models/{noun}/mesh.glb")).exists() {
+                MeshOrScene::Scene(asset_server.load(format!("models/{noun}/mesh.glb#Scene0")))
+            } else {
+                MeshOrScene::Mesh(Mesh::from(Cuboid::new(1.0, 1.0, 1.0)))
             }
-
-            let model: Handle<Scene> =
-                asset_server.load(format!("models/{noun}/0/mesh.glb#Scene0"));
-
-            MeshOrScene::Scene(model)
         }
     };
     let collider = match noun {

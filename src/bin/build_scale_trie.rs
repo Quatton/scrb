@@ -22,7 +22,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for (idx, scale) in scales.iter().enumerate() {
         // 4 is the base scale then 10% for each level
-        let calibrated_scale = 1.5_f32.powi(idx as i32 - 4);
+        let calibrated_scale = 1.5_f32.powi(idx as i32 - 2);
 
         for scale_word in scale {
             root.insert(scale_word, Modifier::ScaleModifier(calibrated_scale));
