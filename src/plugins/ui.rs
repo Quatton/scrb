@@ -8,8 +8,8 @@ use bevy::{
 };
 use bevy_eventlistener::event_listener::On;
 use bevy_mod_picking::prelude::*;
-use bevy_rapier3d::prelude::*;
 use bevy_simple_text_input::{TextInputBundle, TextInputSubmitEvent};
+use bevy_xpbd_3d::prelude::*;
 
 use crate::components::{
     core::LockedAxesBundle,
