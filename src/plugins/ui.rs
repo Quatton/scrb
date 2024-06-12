@@ -1,10 +1,10 @@
-use std::{io::Write, time::Duration};
+use std::io::Write;
 
-use backends::raycast::RaycastPickable;
+use backends::rapier::RapierPickable;
 use bevy::{prelude::*, utils::HashMap};
 use bevy_eventlistener::event_listener::On;
 use bevy_mod_picking::prelude::*;
-use bevy_rapier3d::prelude::*;
+use bevy_rapier3d::{na::distance, prelude::*, rapier::geometry::ColliderEnabled};
 use bevy_simple_text_input::{TextInputBundle, TextInputSubmitEvent};
 
 use crate::components::{
@@ -40,7 +40,7 @@ impl Default for MeshLoadingPoller {
 struct MeshLoadingTimeout(Timer);
 impl Default for MeshLoadingTimeout {
     fn default() -> Self {
-        Self(Timer::from_seconds(60.0, TimerMode::Once))
+        Self(Timer::from_seconds(120.0, TimerMode::Once))
     }
 }
 
@@ -68,11 +68,71 @@ impl Plugin for MainUiPlugin {
             .add_systems(
                 Update,
                 on_drag_end_despawn.run_if(any_with_component::<PickingAnchor>),
-            );
+            )
+            .add_systems(Update, on_drag_start);
         // .add_systems(
         //     Update,
         //     attach_collider_to_scene.run_if(any_with_component::<PendingCollider>),
         // );
+    }
+}
+
+fn on_drag_start(
+    mut commands: Commands,
+    mut events: EventReader<Pointer<DragStart>>,
+    camera_query: Query<(&Camera, &GlobalTransform), With<Camera3d>>,
+    entity_query: Query<(&Transform, &GlobalTransform), Without<Camera3d>>,
+) {
+    for event in events.read() {
+        let (cm, ct) = camera_query.single();
+
+        let cursor_ray = cm
+            .viewport_to_world(ct, event.pointer_location.position)
+            .unwrap();
+
+        // let max_toi = 100.0;
+        // let solid = true;
+        // let filter = QueryFilter::default();
+
+        // let Some((_, toi)) = rapier_context.cast_ray(
+        //     cursor_ray.origin,
+        //     cursor_ray.direction.into(),
+        //     max_toi,
+        //     solid,
+        //     filter,
+        // ) else {
+        //     return;
+        // };
+
+        let distance = cursor_ray
+            .intersect_plane(Vec3::ZERO, Plane3d::new(Vec3::Z))
+            .unwrap();
+
+        let hit_point = cursor_ray.get_point(distance);
+
+        let transform = Transform::from_translation(hit_point);
+
+        let (target_transform, _) = entity_query.get(event.target).unwrap();
+
+        let anchor = target_transform
+            .with_scale(Vec3::splat(1.0))
+            .compute_matrix()
+            .inverse()
+            .transform_point3(hit_point);
+        let joint = RopeJointBuilder::new(0.5)
+            .local_anchor1(anchor)
+            .local_anchor2(Vec3::ZERO);
+
+        commands.spawn((
+            RigidBody::Fixed,
+            Collider::cuboid(0.0, 0.0, 0.0),
+            ColliderDisabled,
+            ColliderMassProperties::Density(0.0),
+            TransformBundle::from_transform(transform),
+            PickingAnchor,
+            ImpulseJoint::new(event.target, joint),
+            LockedAxesBundle::default(),
+        ));
     }
 }
 
@@ -176,6 +236,7 @@ fn command_listener(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn spawn_listener(
     mut events: EventReader<TextInputSubmitEvent>,
     mut commands: Commands,
@@ -189,15 +250,157 @@ fn spawn_listener(
         let TextInputSubmitEvent { value, .. } = event;
 
         if !value.starts_with('/') {
-            handle_spawning_object(
-                value,
-                &mut dictionary,
-                &mut commands,
-                &asset_server,
-                &mut meshes,
-                &mut materials,
-                &mut python_stdin,
-            );
+            let mut parts = value.split_whitespace().rev();
+            if parts.clone().count() < 1 {
+                return;
+            }
+
+            let mut ent = commands.spawn((
+                RapierPickable,
+                RigidBody::Dynamic,
+                LockedAxesBundle::default(),
+                PickableBundle::default(),
+                SpawnedObject,
+                ColliderMassProperties::Density(1.0),
+                On::<Pointer<DragStart>>::target_commands_mut(|_, cmd| {
+                    cmd.insert(Pickable::IGNORE);
+                    cmd.insert(Damping {
+                        linear_damping: 1.0,
+                        angular_damping: 1.0,
+                    });
+                }), // Disable picking
+                On::<Pointer<DragEnd>>::target_commands_mut(|_, cmd| {
+                    cmd.insert(Pickable::default());
+                    cmd.insert(Velocity {
+                        angvel: Vec3::ZERO,
+                        linvel: Vec3::ZERO,
+                    });
+                    cmd.remove::<Damping>();
+                }), // Enable picking
+            ));
+
+            let noun = parts.next().unwrap_or("ball");
+
+            let collider = match noun {
+                "cube" => Collider::cuboid(0.5, 0.5, 0.5),
+                "ball" => Collider::ball(0.5),
+                _ => Collider::cuboid(0.5, 0.5, 0.5),
+            };
+            let mut material = StandardMaterial::default();
+            let mut transform = Transform::from_xyz(0.0, 20.0, 0.0);
+            for adj in parts {
+                if let Some(entry) = dictionary.search(adj).first() {
+                    for modifier in entry.modifier.clone() {
+                        match modifier {
+                            Modifier::ColorModifier(color) => material.base_color = color,
+                            Modifier::ScaleModifier(scale) => {
+                                transform.scale = Vec3::splat(scale);
+                                transform.translation.y += scale * 0.5;
+                            }
+                            Modifier::RoughnessModifier(roughness) => {
+                                material.perceptual_roughness = if roughness < 0.089 {
+                                    0.089
+                                } else if roughness > 1.0 {
+                                    1.0
+                                } else {
+                                    roughness
+                                };
+                            }
+                            Modifier::MetallicModifier(metallic) => {
+                                material.metallic = if metallic < 0.0 {
+                                    0.0
+                                } else if metallic > 1.0 {
+                                    1.0
+                                } else {
+                                    metallic
+                                };
+                            }
+                            Modifier::ReflectanceModifier(reflectance) => {
+                                material.reflectance = if reflectance < 0.0 {
+                                    0.0
+                                } else if reflectance > 1.0 {
+                                    1.0
+                                } else {
+                                    reflectance
+                                };
+                            }
+                        }
+                    }
+                }
+            }
+
+            let shape: MeshOrScene = match noun {
+                "cube" => MeshOrScene::Mesh(Mesh::from(Cuboid::new(1.0, 1.0, 1.0))),
+                "ball" => MeshOrScene::Mesh(Mesh::from(Sphere::new(0.5))),
+                _ => {
+                    if !std::path::Path::new(&format!("assets/models/{noun}/mesh.glb")).exists() {
+                        let stdin = &mut python_stdin.stdin;
+
+                        if writeln!(stdin, "{}", noun).is_ok() {
+                            let noun = noun.to_string();
+                            MeshOrScene::Loading(noun)
+                        } else {
+                            MeshOrScene::Mesh(Mesh::from(Cuboid::new(1.0, 1.0, 1.0)))
+                        }
+                    } else {
+                        MeshOrScene::Scene(
+                            asset_server.load(format!("models/{noun}/mesh.glb#Scene0")),
+                        )
+                    }
+                }
+            };
+
+            match shape {
+                MeshOrScene::Mesh(mesh) => {
+                    ent.insert((
+                        PbrBundle {
+                            mesh: meshes.add(mesh),
+                            material: materials.add(material),
+                            transform,
+                            ..default()
+                        },
+                        collider,
+                    ));
+                }
+                MeshOrScene::Scene(model) => {
+                    ent.insert((
+                        SceneBundle {
+                            scene: model,
+                            transform: transform
+                                .with_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
+                            ..default()
+                        },
+                        collider,
+                        // AsyncSceneCollider {
+                        //     shape: Some(ComputedColliderShape::TriMesh),
+                        //     named_shapes: default(),
+                        // },
+                    ));
+                }
+                MeshOrScene::Loading(noun) => {
+                    ent.insert((
+                        SceneBundle {
+                            scene: asset_server.load("models/cubed/mesh.glb#Scene0"),
+                            transform: transform
+                                .with_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
+                            ..default()
+                        },
+                        collider,
+                        MeshLoading { noun },
+                    ));
+                }
+                MeshOrScene::MeshHandle(handle) => {
+                    ent.insert((
+                        PbrBundle {
+                            mesh: handle,
+                            material: materials.add(material),
+                            transform,
+                            ..default()
+                        },
+                        collider,
+                    ));
+                }
+            }
         }
     }
 }
@@ -275,190 +478,6 @@ fn run_python_backend(mut commands: Commands) {
 #[derive(Component)]
 pub struct PickingAnchor;
 
-fn handle_spawning_object(
-    value: &str,
-    dictionary: &mut ResMut<Dictionary>,
-    commands: &mut Commands,
-    asset_server: &Res<AssetServer>,
-    meshes: &mut ResMut<Assets<Mesh>>,
-    materials: &mut ResMut<Assets<StandardMaterial>>,
-    python_stdin: &mut ResMut<PythonStdin>,
-) {
-    // let thread_pool = AsyncComputeTaskPool::get();
-
-    let mut parts = value.split_whitespace().rev();
-    if parts.clone().count() < 1 {
-        return;
-    }
-
-    let mut ent = commands.spawn((
-        RaycastPickable,
-        RigidBody::Dynamic,
-        LockedAxesBundle::default(),
-        PickableBundle::default(),
-        SpawnedObject,
-        ColliderMassProperties::Density(1.0),
-        On::<Pointer<DragStart>>::target_commands_mut(|drag, cmd| {
-            cmd.insert(Pickable::IGNORE);
-            // .insert(RigidBody::KinematicPositionBased);
-
-            let joint = RopeJointBuilder::new(1.0);
-
-            cmd.commands().spawn((
-                RigidBody::Fixed,
-                Collider::cuboid(0.0, 0.0, 0.0),
-                ColliderDisabled,
-                ColliderMassProperties::Density(0.0),
-                TransformBundle::from_transform(Transform::from_xyz(0.0, 0.0, 0.0)),
-                // ColliderDisabled,
-                PickingAnchor,
-                ImpulseJoint::new(drag.target, joint),
-                LockedAxesBundle::default(),
-            ));
-        }), // Disable picking
-        On::<Pointer<DragEnd>>::target_commands_mut(|_, cmd| {
-            cmd.insert(Pickable::default());
-        }), // Enable picking
-    ));
-
-    // let id = ent.id();
-
-    let noun = parts.next().unwrap_or("ball");
-
-    let collider = match noun {
-        "cube" => Collider::cuboid(0.5, 0.5, 0.5),
-        "ball" => Collider::ball(0.5),
-        _ => Collider::cuboid(0.5, 0.5, 0.5),
-    };
-    let mut material = StandardMaterial::default();
-    let mut transform = Transform::from_xyz(0.0, 20.0, 0.0);
-    for adj in parts {
-        if let Some(entry) = dictionary.search(adj).first() {
-            for modifier in entry.modifier.clone() {
-                match modifier {
-                    Modifier::ColorModifier(color) => material.base_color = color,
-                    Modifier::ScaleModifier(scale) => {
-                        transform.scale = Vec3::splat(scale);
-                        transform.translation.y += scale * 0.5;
-                    }
-                    Modifier::RoughnessModifier(roughness) => {
-                        material.perceptual_roughness = if roughness < 0.089 {
-                            0.089
-                        } else if roughness > 1.0 {
-                            1.0
-                        } else {
-                            roughness
-                        };
-                    }
-                    Modifier::MetallicModifier(metallic) => {
-                        material.metallic = if metallic < 0.0 {
-                            0.0
-                        } else if metallic > 1.0 {
-                            1.0
-                        } else {
-                            metallic
-                        };
-                    }
-                    Modifier::ReflectanceModifier(reflectance) => {
-                        material.reflectance = if reflectance < 0.0 {
-                            0.0
-                        } else if reflectance > 1.0 {
-                            1.0
-                        } else {
-                            reflectance
-                        };
-                    }
-                }
-            }
-        }
-    }
-
-    let shape: MeshOrScene = match noun {
-        "cube" => MeshOrScene::Mesh(Mesh::from(Cuboid::new(1.0, 1.0, 1.0))),
-        "ball" => MeshOrScene::Mesh(Mesh::from(Sphere::new(0.5))),
-        _ => {
-            if !std::path::Path::new(&format!("assets/models/{noun}/mesh.glb")).exists() {
-                let stdin = &mut python_stdin.stdin;
-                writeln!(stdin, "{}", noun).unwrap();
-
-                // poll "models" directory until the file is created
-
-                let noun = noun.to_string();
-                // let task = thread_pool.spawn(async move {
-                //     let mut command_queue = CommandQueue::default();
-
-                //     let max_wait = 60;
-                //     for _ in 0..max_wait {
-                //         if std::path::Path::new(&format!("assets/models/{noun}/mesh.glb")).exists()
-                //         {
-                //             break;
-                //         }
-                //         std::thread::sleep(std::time::Duration::from_secs(1));
-                //     }
-
-                //     command_queue
-                // });
-
-                MeshOrScene::Loading(noun)
-            } else {
-                MeshOrScene::Scene(asset_server.load(format!("models/{noun}/mesh.glb#Scene0")))
-            }
-        }
-    };
-
-    match shape {
-        MeshOrScene::Mesh(mesh) => {
-            ent.insert((
-                PbrBundle {
-                    mesh: meshes.add(mesh),
-                    material: materials.add(material),
-                    transform,
-                    ..default()
-                },
-                collider,
-            ));
-        }
-        MeshOrScene::Scene(model) => {
-            ent.insert((
-                SceneBundle {
-                    scene: model,
-                    transform: transform
-                        .with_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
-                    ..default()
-                },
-                collider,
-                // AsyncSceneCollider {
-                //     shape: Some(ComputedColliderShape::TriMesh),
-                //     named_shapes: default(),
-                // },
-            ));
-        }
-        MeshOrScene::Loading(noun) => {
-            ent.insert((
-                SceneBundle {
-                    scene: asset_server.load("models/cubed/mesh.glb#Scene0"),
-                    transform: transform
-                        .with_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
-                    ..default()
-                },
-                collider,
-                MeshLoading { noun },
-            ));
-        }
-        MeshOrScene::MeshHandle(handle) => {
-            ent.insert((
-                PbrBundle {
-                    mesh: handle,
-                    material: materials.add(material),
-                    transform,
-                    ..default()
-                },
-                collider,
-            ));
-        }
-    }
-}
-
 fn on_drag_end_despawn(
     mut commands: Commands,
     mut events: EventReader<Pointer<DragEnd>>,
@@ -474,48 +493,20 @@ fn on_drag_end_despawn(
 fn update_handle_drag(
     mut events: EventReader<Pointer<Drag>>,
     mut entity_query: Query<(&mut Transform, &PickingAnchor), Without<Camera3d>>,
-    // mut entity_query: Query<(&RaycastPickable, &Children, &mut Transform), Without<Camera3d>>,
-    camera_query: Query<&Transform, With<Camera3d>>,
-    projection_query: Query<&Projection>,
-    window_query: Query<&Window>,
+    camera_query: Query<(&Camera, &GlobalTransform)>,
 ) {
     for event in events.read() {
-        let ct = camera_query.single();
-        let proj = projection_query.single();
+        let (cm, ct) = camera_query.single();
+        if let Ok((mut transform, _)) = entity_query.get_single_mut() {
+            let cursor_pos = cm
+                .viewport_to_world(ct, event.pointer_location.position)
+                .unwrap();
+            let distance = cursor_pos
+                .intersect_plane(Vec3::ZERO, Plane3d::new(Vec3::new(0.0, 0.0, 1.0)))
+                .unwrap();
 
-        if let Projection::Perspective(_proj) = proj {
-            let window = window_query.single();
-            let centerx = window.width() / 2.0;
-            let centery = window.height() / 2.0;
-            if let Ok((mut transform, _)) = entity_query.get_single_mut() {
-                // transform.translation = (ct.translation
-                // // flip y axis
-                // + (Vec3::new(event.pointer_location.position.x - centerx, centery - event.pointer_location.position.y, 0.0) / 30.0))
-                // .reject_from(Vec3::Z);
-
-                let cursor_pos = (ct.translation
-                    + (Vec3::new(
-                        event.pointer_location.position.x - centerx,
-                        centery - event.pointer_location.position.y,
-                        0.0,
-                    ) / 30.0))
-                    .reject_from(Vec3::Z);
-
-                transform.translation = cursor_pos;
-
-                // for child in children.iter() {
-                //     if let Ok(_joint) = joint_query.get_mut(*child) {
-                //         // *joint = ImpulseJoint::new(
-                //         //     joint.parent,
-                //         //     SphericalJointBuilder::new()
-                //         //         .local_anchor1(cursor_pos - transform.translation)
-                //         //         .local_anchor2(Vec3::new(0.0, 0.0, 0.0)),
-                //         // );
-
-                //     }
-                // }
-            }
-        };
+            transform.translation = cursor_pos.get_point(distance);
+        }
     }
 }
 

@@ -1,4 +1,3 @@
-use backends::raycast::RaycastBackendSettings;
 use bevy::prelude::*;
 use bevy_mod_picking::prelude::*;
 use bevy_rapier3d::prelude::*;
@@ -13,9 +12,8 @@ fn main() {
             RapierPhysicsPlugin::<NoUserData>::default(),
             RapierDebugRenderPlugin::default(),
         ))
-        .insert_resource(RaycastBackendSettings {
+        .insert_resource(RapierBackendSettings {
             require_markers: true,
-            ..default()
         })
         .insert_resource(DebugPickingMode::Normal)
         .add_plugins(TextInputPlugin)

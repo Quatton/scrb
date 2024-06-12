@@ -57,7 +57,7 @@ fn setup_player(mut commands: Commands, player_assets: Res<PlayerAssets>) {
             Player::default(),
             LockedAxesBundle::player(),
             ExternalImpulse::default(),
-            ColliderMassProperties::Density(1.0),
+            ColliderMassProperties::Density(99999.0),
             GravityScale(3.0),
             Velocity::default(),
         ))
