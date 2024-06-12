@@ -31,6 +31,15 @@ struct MeshLoadingPoller(Timer);
 
 impl Default for MeshLoadingPoller {
     fn default() -> Self {
+        Self(Timer::from_seconds(1.0, TimerMode::Repeating))
+    }
+}
+
+#[derive(Component, Deref, DerefMut)]
+
+struct MeshLoadingTimeout(Timer);
+impl Default for MeshLoadingTimeout {
+    fn default() -> Self {
         Self(Timer::from_seconds(60.0, TimerMode::Once))
     }
 }
@@ -70,33 +79,40 @@ impl Plugin for MainUiPlugin {
 fn poll_mesh_until_loaded_or_timeout(
     time: Res<Time>,
     mut commands: Commands,
-    mut timeout: Local<HashMap<Entity, MeshLoadingPoller>>,
+    mut timeout: Local<HashMap<Entity, MeshLoadingTimeout>>,
+    mut timer: Local<MeshLoadingPoller>,
     asset_server: Res<AssetServer>,
     query: Query<(Entity, &Transform, &MeshLoading)>,
 ) {
-    for (entity, transform, mesh_loading) in query.iter() {
-        match timeout.get_mut(&entity) {
-            Some(timer) => {
-                if timer.0.tick(time.delta()).just_finished() {
-                    commands.entity(entity).despawn_recursive();
-                    timeout.remove(&entity);
-                }
-                let noun = &mesh_loading.noun;
-                if std::path::Path::new(&format!("assets/models/{noun}/mesh.glb")).exists() {
-                    commands
-                        .entity(entity)
-                        .remove::<MeshLoading>()
-                        .insert(SceneBundle {
-                            scene: asset_server.load(format!("models/{noun}/mesh.glb#Scene0")),
-                            transform: *transform,
-                            ..default()
-                        });
+    if timer.tick(time.delta()).just_finished() {
+        for (entity, transform, mesh_loading) in query.iter() {
+            match timeout.get_mut(&entity) {
+                Some(timer) => {
+                    if timer.tick(time.delta()).just_finished() {
+                        {
+                            commands.entity(entity).despawn_recursive();
+                            timeout.remove(&entity);
+                        }
+                        let noun = &mesh_loading.noun;
+                        if std::path::Path::new(&format!("assets/models/{noun}/mesh.glb")).exists()
+                        {
+                            commands
+                                .entity(entity)
+                                .remove::<MeshLoading>()
+                                .insert(SceneBundle {
+                                    scene: asset_server
+                                        .load(format!("models/{noun}/mesh.glb#Scene0")),
+                                    transform: *transform,
+                                    ..default()
+                                });
 
-                    timeout.remove(&entity);
+                            timeout.remove(&entity);
+                        }
+                    }
                 }
-            }
-            None => {
-                timeout.insert(entity, MeshLoadingPoller::default());
+                None => {
+                    timeout.insert(entity, MeshLoadingTimeout::default());
+                }
             }
         }
     }
