@@ -93,21 +93,22 @@ fn poll_mesh_until_loaded_or_timeout(
                             commands.entity(entity).despawn_recursive();
                             timeout.remove(&entity);
                         }
-                        let noun = &mesh_loading.noun;
-                        if std::path::Path::new(&format!("assets/models/{noun}/mesh.glb")).exists()
-                        {
-                            commands
-                                .entity(entity)
-                                .remove::<MeshLoading>()
-                                .insert(SceneBundle {
-                                    scene: asset_server
-                                        .load(format!("models/{noun}/mesh.glb#Scene0")),
-                                    transform: *transform,
-                                    ..default()
-                                });
+                    }
 
-                            timeout.remove(&entity);
-                        }
+                    let noun = &mesh_loading.noun;
+                    if std::path::Path::new(&format!("assets/models/{noun}/mesh.glb")).exists() {
+                        println!("Successfully loaded {}", noun);
+
+                        commands
+                            .entity(entity)
+                            .remove::<MeshLoading>()
+                            .insert(SceneBundle {
+                                scene: asset_server.load(format!("models/{noun}/mesh.glb#Scene0")),
+                                transform: *transform,
+                                ..default()
+                            });
+
+                        timeout.remove(&entity);
                     }
                 }
                 None => {
@@ -227,6 +228,7 @@ pub enum MeshOrScene {
     Mesh(Mesh),
     Scene(Handle<Scene>),
     Loading(String),
+    MeshHandle(Handle<Mesh>),
 }
 
 #[derive(Component)]
@@ -251,7 +253,8 @@ pub struct PythonStdin {
 fn run_python_backend(mut commands: Commands) {
     // run subprocess
     let mut child = std::process::Command::new("/Users/quatton/.pyenv/versions/tsr/bin/python")
-        .arg("/Users/quatton/Documents/GitHub/TripoSR/realtime.py")
+        .current_dir("/Users/quatton/Documents/GitHub/TripoSR")
+        .arg("realtime.py")
         .arg("--output-dir")
         .arg("/Users/quatton/Documents/GitHub/scrb/assets/models")
         .arg("--pipe-to-3d")
@@ -304,8 +307,9 @@ fn handle_spawning_object(
             cmd.commands().spawn((
                 RigidBody::Fixed,
                 Collider::cuboid(0.0, 0.0, 0.0),
+                ColliderDisabled,
                 ColliderMassProperties::Density(0.0),
-                TransformBundle::from_transform(Transform::from_xyz(0.0, 3.0, 0.0)),
+                TransformBundle::from_transform(Transform::from_xyz(0.0, 0.0, 0.0)),
                 // ColliderDisabled,
                 PickingAnchor,
                 ImpulseJoint::new(drag.target, joint),
@@ -439,6 +443,17 @@ fn handle_spawning_object(
                 },
                 collider,
                 MeshLoading { noun },
+            ));
+        }
+        MeshOrScene::MeshHandle(handle) => {
+            ent.insert((
+                PbrBundle {
+                    mesh: handle,
+                    material: materials.add(material),
+                    transform,
+                    ..default()
+                },
+                collider,
             ));
         }
     }
