@@ -1,7 +1,7 @@
-use std::io::Write;
+use std::{io::Write, time::Duration};
 
 use backends::raycast::RaycastPickable;
-use bevy::prelude::*;
+use bevy::{prelude::*, utils::HashMap};
 use bevy_eventlistener::event_listener::On;
 use bevy_mod_picking::prelude::*;
 use bevy_rapier3d::prelude::*;
@@ -26,6 +26,15 @@ pub enum TypingState {
     IsTyping,
 }
 
+#[derive(Component, Deref, DerefMut)]
+struct MeshLoadingPoller(Timer);
+
+impl Default for MeshLoadingPoller {
+    fn default() -> Self {
+        Self(Timer::from_seconds(60.0, TimerMode::Once))
+    }
+}
+
 pub struct MainUiPlugin;
 
 impl Plugin for MainUiPlugin {
@@ -42,11 +51,54 @@ impl Plugin for MainUiPlugin {
                     spawn_listener,
                     update_handle_drag,
                 ),
+            )
+            .add_systems(
+                Update,
+                poll_mesh_until_loaded_or_timeout.run_if(any_with_component::<MeshLoading>),
+            )
+            .add_systems(
+                Update,
+                on_drag_end_despawn.run_if(any_with_component::<PickingAnchor>),
             );
         // .add_systems(
         //     Update,
         //     attach_collider_to_scene.run_if(any_with_component::<PendingCollider>),
         // );
+    }
+}
+
+fn poll_mesh_until_loaded_or_timeout(
+    time: Res<Time>,
+    mut commands: Commands,
+    mut timeout: Local<HashMap<Entity, MeshLoadingPoller>>,
+    asset_server: Res<AssetServer>,
+    query: Query<(Entity, &Transform, &MeshLoading)>,
+) {
+    for (entity, transform, mesh_loading) in query.iter() {
+        match timeout.get_mut(&entity) {
+            Some(timer) => {
+                if timer.0.tick(time.delta()).just_finished() {
+                    commands.entity(entity).despawn_recursive();
+                    timeout.remove(&entity);
+                }
+                let noun = &mesh_loading.noun;
+                if std::path::Path::new(&format!("assets/models/{noun}/mesh.glb")).exists() {
+                    commands
+                        .entity(entity)
+                        .remove::<MeshLoading>()
+                        .insert(SceneBundle {
+                            scene: asset_server.load(format!("models/{noun}/mesh.glb#Scene0")),
+                            transform: *transform,
+                            ..default()
+                        });
+
+                    timeout.remove(&entity);
+                }
+            }
+            None => {
+                timeout.insert(entity, MeshLoadingPoller::default());
+            }
+        }
     }
 }
 
@@ -158,6 +210,12 @@ pub struct SpawnedObject;
 pub enum MeshOrScene {
     Mesh(Mesh),
     Scene(Handle<Scene>),
+    Loading(String),
+}
+
+#[derive(Component)]
+pub struct MeshLoading {
+    noun: String,
 }
 
 #[derive(Component)]
@@ -195,6 +253,9 @@ fn run_python_backend(mut commands: Commands) {
     });
 }
 
+#[derive(Component)]
+pub struct PickingAnchor;
+
 fn handle_spawning_object(
     value: &str,
     dictionary: &mut ResMut<Dictionary>,
@@ -204,37 +265,46 @@ fn handle_spawning_object(
     materials: &mut ResMut<Assets<StandardMaterial>>,
     python_stdin: &mut ResMut<PythonStdin>,
 ) {
+    // let thread_pool = AsyncComputeTaskPool::get();
+
     let mut parts = value.split_whitespace().rev();
     if parts.clone().count() < 1 {
         return;
     }
+
+    let mut ent = commands.spawn((
+        RaycastPickable,
+        RigidBody::Dynamic,
+        LockedAxesBundle::default(),
+        PickableBundle::default(),
+        SpawnedObject,
+        ColliderMassProperties::Density(1.0),
+        On::<Pointer<DragStart>>::target_commands_mut(|drag, cmd| {
+            cmd.insert(Pickable::IGNORE);
+            // .insert(RigidBody::KinematicPositionBased);
+
+            let joint = RopeJointBuilder::new(1.0);
+
+            cmd.commands().spawn((
+                RigidBody::Fixed,
+                Collider::cuboid(0.0, 0.0, 0.0),
+                ColliderMassProperties::Density(0.0),
+                TransformBundle::from_transform(Transform::from_xyz(0.0, 3.0, 0.0)),
+                // ColliderDisabled,
+                PickingAnchor,
+                ImpulseJoint::new(drag.target, joint),
+                LockedAxesBundle::default(),
+            ));
+        }), // Disable picking
+        On::<Pointer<DragEnd>>::target_commands_mut(|_, cmd| {
+            cmd.insert(Pickable::default());
+        }), // Enable picking
+    ));
+
+    // let id = ent.id();
+
     let noun = parts.next().unwrap_or("ball");
-    let shape: MeshOrScene = match noun {
-        "cube" => MeshOrScene::Mesh(Mesh::from(Cuboid::new(1.0, 1.0, 1.0))),
-        "ball" => MeshOrScene::Mesh(Mesh::from(Sphere::new(0.5))),
-        _ => {
-            if !std::path::Path::new(&format!("assets/models/{noun}/mesh.glb")).exists() {
-                let stdin = &mut python_stdin.stdin;
-                writeln!(stdin, "{}", noun).unwrap();
 
-                // poll "models" directory until the file is created
-
-                let max_wait = 60;
-                for _ in 0..max_wait {
-                    if std::path::Path::new(&format!("assets/models/{noun}/mesh.glb")).exists() {
-                        break;
-                    }
-                    std::thread::sleep(std::time::Duration::from_secs(1));
-                }
-            }
-
-            if std::path::Path::new(&format!("assets/models/{noun}/mesh.glb")).exists() {
-                MeshOrScene::Scene(asset_server.load(format!("models/{noun}/mesh.glb#Scene0")))
-            } else {
-                MeshOrScene::Mesh(Mesh::from(Cuboid::new(1.0, 1.0, 1.0)))
-            }
-        }
-    };
     let collider = match noun {
         "cube" => Collider::cuboid(0.5, 0.5, 0.5),
         "ball" => Collider::ball(0.5),
@@ -282,22 +352,39 @@ fn handle_spawning_object(
             }
         }
     }
-    let mut ent = commands.spawn((
-        RaycastPickable,
-        RigidBody::Dynamic,
-        LockedAxesBundle::default(),
-        PickableBundle::default(),
-        SpawnedObject,
-        ColliderMassProperties::Density(1.0),
-        On::<Pointer<DragStart>>::target_commands_mut(|_, cmd| {
-            cmd.insert((RigidBody::Fixed, Pickable::IGNORE, ColliderDisabled));
-        }), // Disable picking
-        On::<Pointer<DragEnd>>::target_commands_mut(|_, cmd| {
-            cmd.insert((RigidBody::Dynamic, Pickable::default()));
-            cmd.remove::<ColliderDisabled>();
-            // Collider::from_bevy_mesh(mesh, &ComputedColliderShape::ConvexHull);
-        }), // Enable picking
-    ));
+
+    let shape: MeshOrScene = match noun {
+        "cube" => MeshOrScene::Mesh(Mesh::from(Cuboid::new(1.0, 1.0, 1.0))),
+        "ball" => MeshOrScene::Mesh(Mesh::from(Sphere::new(0.5))),
+        _ => {
+            if !std::path::Path::new(&format!("assets/models/{noun}/mesh.glb")).exists() {
+                let stdin = &mut python_stdin.stdin;
+                writeln!(stdin, "{}", noun).unwrap();
+
+                // poll "models" directory until the file is created
+
+                let noun = noun.to_string();
+                // let task = thread_pool.spawn(async move {
+                //     let mut command_queue = CommandQueue::default();
+
+                //     let max_wait = 60;
+                //     for _ in 0..max_wait {
+                //         if std::path::Path::new(&format!("assets/models/{noun}/mesh.glb")).exists()
+                //         {
+                //             break;
+                //         }
+                //         std::thread::sleep(std::time::Duration::from_secs(1));
+                //     }
+
+                //     command_queue
+                // });
+
+                MeshOrScene::Loading(noun)
+            } else {
+                MeshOrScene::Scene(asset_server.load(format!("models/{noun}/mesh.glb#Scene0")))
+            }
+        }
+    };
 
     match shape {
         MeshOrScene::Mesh(mesh) => {
@@ -325,56 +412,38 @@ fn handle_spawning_object(
                 //     named_shapes: default(),
                 // },
             ));
-
-            // let mesh_handle =
-            //     asset_server.load(format!("models/{noun}/0/mesh.glb#Mesh0/Primitive0"));
-            // let mesh = meshes.get(&mesh_handle).unwrap();
-
-            // let collider = Collider::from_bevy_mesh(mesh, &ComputedColliderShape::ConvexHull);
-
-            // if let Some(collider) = collider {
-            //     ent.insert(collider);
-            // } else {
-            //     ent.insert(PendingCollider);
-            // }
+        }
+        MeshOrScene::Loading(noun) => {
+            ent.insert((
+                SceneBundle {
+                    scene: asset_server.load("models/cubed/mesh.glb#Scene0"),
+                    transform: transform
+                        .with_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
+                    ..default()
+                },
+                collider,
+                MeshLoading { noun },
+            ));
         }
     }
 }
 
-// fn attach_collider_to_scene(
-//     mut commands: Commands,
-//     scene_meshes: Query<(Entity, &Children), With<PendingCollider>>,
-//     mesh_query: Query<&Handle<Mesh>>,
-//     children_query: Query<&Children>,
-//     meshes: Res<Assets<Mesh>>,
-// ) {
-//     // iterate over all meshes in the scene and match them by their name.
-//     for (pending, _children) in &scene_meshes {
-//         println!("pending collider: {:?}", pending);
-//         for children in children_query.iter_descendants(pending) {
-//             println!("children: {:?}", children);
-//             if let Ok(mesh_handle) = mesh_query.get(children) {
-//                 println!("mesh_handle: {:?}", mesh_handle);
-//                 if let Some(mesh) = meshes.get(mesh_handle) {
-//                     let collider =
-//                     // Attach collider to the entity of this same object.
-
-//                     if let Some(collider) = collider {
-//                         commands.entity(pending).insert(collider);
-//                     }
-
-//                     break;
-//                 }
-//             }
-//         }
-//         // commands.entity(pending).remove::<Collider>();
-//         commands.entity(pending).remove::<PendingCollider>();
-//     }
-// }
+fn on_drag_end_despawn(
+    mut commands: Commands,
+    mut events: EventReader<Pointer<DragEnd>>,
+    query: Query<Entity, With<PickingAnchor>>,
+) {
+    for _ in events.read() {
+        for entity in query.iter() {
+            commands.entity(entity).despawn_recursive();
+        }
+    }
+}
 
 fn update_handle_drag(
     mut events: EventReader<Pointer<Drag>>,
-    mut query: Query<(&mut Transform, &RaycastPickable), Without<Camera3d>>,
+    mut entity_query: Query<(&mut Transform, &PickingAnchor), Without<Camera3d>>,
+    // mut entity_query: Query<(&RaycastPickable, &Children, &mut Transform), Without<Camera3d>>,
     camera_query: Query<&Transform, With<Camera3d>>,
     projection_query: Query<&Projection>,
     window_query: Query<&Window>,
@@ -387,11 +456,33 @@ fn update_handle_drag(
             let window = window_query.single();
             let centerx = window.width() / 2.0;
             let centery = window.height() / 2.0;
-            if let Ok((mut transform, _)) = query.get_mut(event.target) {
-                transform.translation = (ct.translation
-                // flip y axis
-                + (Vec3::new(event.pointer_location.position.x - centerx, centery - event.pointer_location.position.y, 0.0) / 30.0))
-                .reject_from(Vec3::Z);
+            if let Ok((mut transform, _)) = entity_query.get_single_mut() {
+                // transform.translation = (ct.translation
+                // // flip y axis
+                // + (Vec3::new(event.pointer_location.position.x - centerx, centery - event.pointer_location.position.y, 0.0) / 30.0))
+                // .reject_from(Vec3::Z);
+
+                let cursor_pos = (ct.translation
+                    + (Vec3::new(
+                        event.pointer_location.position.x - centerx,
+                        centery - event.pointer_location.position.y,
+                        0.0,
+                    ) / 30.0))
+                    .reject_from(Vec3::Z);
+
+                transform.translation = cursor_pos;
+
+                // for child in children.iter() {
+                //     if let Ok(_joint) = joint_query.get_mut(*child) {
+                //         // *joint = ImpulseJoint::new(
+                //         //     joint.parent,
+                //         //     SphericalJointBuilder::new()
+                //         //         .local_anchor1(cursor_pos - transform.translation)
+                //         //         .local_anchor2(Vec3::new(0.0, 0.0, 0.0)),
+                //         // );
+
+                //     }
+                // }
             }
         };
     }

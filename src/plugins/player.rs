@@ -101,6 +101,8 @@ fn kb_control(
             PlayerState::Jumping
         };
 
+        velocity.angvel = Vec3::ZERO;
+
         if keyboard_input.any_just_released([KeyCode::KeyA, KeyCode::KeyD]) {
             state = PlayerState::Idle;
             velocity.linvel.x = 0.0;
