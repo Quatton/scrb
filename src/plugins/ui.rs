@@ -454,14 +454,18 @@ fn spawn_listener(
                 }
                 MeshOrScene::Loading(noun) => {
                     ent.insert((
-                        SceneBundle {
-                            scene: asset_server.load("models/cubed/mesh.glb#Scene0"),
-                            transform: transform.with_rotation(
-                                Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)
-                                    * Quat::from_rotation_z(-std::f32::consts::FRAC_PI_2),
-                            ),
-                            ..default()
-                        },
+                        // SceneBundle {
+                        //     scene: asset_server.load("models/cubed/mesh.glb#Scene0"),
+                        //     transform: transform.with_rotation(
+                        //         Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)
+                        //             * Quat::from_rotation_z(-std::f32::consts::FRAC_PI_2),
+                        //     ),
+                        //     ..default()
+                        // },
+                        transform.with_rotation(
+                            Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)
+                                * Quat::from_rotation_z(-std::f32::consts::FRAC_PI_2),
+                        ),
                         collider,
                         MeshLoading { noun },
                     ));
