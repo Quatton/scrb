@@ -1,16 +1,22 @@
 use std::io::Write;
 
 use backends::rapier::RapierPickable;
-use bevy::{prelude::*, utils::HashMap};
+use bevy::{
+    input::{mouse::MouseButtonInput, ButtonState},
+    prelude::*,
+    utils::HashMap,
+};
 use bevy_eventlistener::event_listener::On;
 use bevy_mod_picking::prelude::*;
-use bevy_rapier3d::{na::distance, prelude::*, rapier::geometry::ColliderEnabled};
+use bevy_rapier3d::prelude::*;
 use bevy_simple_text_input::{TextInputBundle, TextInputSubmitEvent};
 
 use crate::components::{
     core::LockedAxesBundle,
     modifier::{Dictionary, Modifier},
 };
+
+use super::player::Player;
 
 const BORDER_COLOR_ACTIVE: Color = Color::rgb(0.75, 0.52, 0.99);
 const TEXT_COLOR: Color = Color::rgb(0.9, 0.9, 0.9);
@@ -70,10 +76,81 @@ impl Plugin for MainUiPlugin {
                 on_drag_end_despawn.run_if(any_with_component::<PickingAnchor>),
             )
             .add_systems(Update, on_drag_start);
+        // .add_systems(Update, click_listener);
         // .add_systems(
         //     Update,
         //     attach_collider_to_scene.run_if(any_with_component::<PendingCollider>),
         // );
+    }
+}
+
+fn click_listener(
+    mut commands: Commands,
+    mut mousebtn_evr: EventReader<MouseButtonInput>,
+    camera_query: Query<(&Camera, &GlobalTransform), With<Camera3d>>,
+    player_query: Query<(&Transform, &Player), Without<Camera3d>>,
+    window_query: Query<&Window>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    for mousebtn_ev in mousebtn_evr.read() {
+        if !mousebtn_ev.state.is_pressed() && mousebtn_ev.button != MouseButton::Left {
+            continue;
+        }
+
+        let (cm, ct) = camera_query.single();
+
+        let cursor_pos = window_query
+            .get(mousebtn_ev.window)
+            .unwrap()
+            .cursor_position()
+            .unwrap();
+
+        let cursor_ray = cm.viewport_to_world(ct, cursor_pos).unwrap();
+
+        let distance = cursor_ray
+            .intersect_plane(Vec3::ZERO, Plane3d::new(Vec3::Z))
+            .unwrap();
+
+        let hit_point = cursor_ray.get_point(distance);
+
+        let player_transform = player_query.single().0;
+
+        let start = player_transform.translation + Vec3::Y * 3.0;
+
+        let d = hit_point - start;
+        let dx = d.x;
+        let dy = d.y;
+
+        let angle = dy.atan2(dx) / 2.0 + std::f32::consts::FRAC_PI_4;
+        let tan_angle = angle.tan();
+
+        let speed = (9.81 * (dx).powi(2) * (tan_angle.powi(2) + 1.0)
+            / (2.0 * (dx * tan_angle - dy)))
+            .sqrt();
+
+        println!("Speed: {}, Angle: {}", speed, angle);
+
+        commands.spawn((
+            RapierPickable,
+            RigidBody::Dynamic,
+            PbrBundle {
+                mesh: meshes.add(Sphere::new(0.5)),
+                material: materials.add(StandardMaterial {
+                    base_color: Color::rgb(0.5, 0.5, 0.5),
+                    ..default()
+                }),
+                transform: Transform::from_translation(start),
+                ..default()
+            },
+            Collider::ball(0.5),
+            Velocity {
+                linvel: Vec3::new(speed * angle.cos(), speed * angle.sin(), 0.0),
+                angvel: Vec3::ZERO,
+            },
+            ColliderMassProperties::Density(1.0),
+            LockedAxesBundle::default(),
+        ));
     }
 }
 
@@ -366,23 +443,23 @@ fn spawn_listener(
                     ent.insert((
                         SceneBundle {
                             scene: model,
-                            transform: transform
-                                .with_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
+                            transform: transform.with_rotation(
+                                Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)
+                                    * Quat::from_rotation_z(-std::f32::consts::FRAC_PI_2),
+                            ),
                             ..default()
                         },
                         collider,
-                        // AsyncSceneCollider {
-                        //     shape: Some(ComputedColliderShape::TriMesh),
-                        //     named_shapes: default(),
-                        // },
                     ));
                 }
                 MeshOrScene::Loading(noun) => {
                     ent.insert((
                         SceneBundle {
                             scene: asset_server.load("models/cubed/mesh.glb#Scene0"),
-                            transform: transform
-                                .with_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
+                            transform: transform.with_rotation(
+                                Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)
+                                    * Quat::from_rotation_z(-std::f32::consts::FRAC_PI_2),
+                            ),
                             ..default()
                         },
                         collider,
@@ -457,12 +534,13 @@ fn run_python_backend(mut commands: Commands) {
     // run subprocess
     let mut child = std::process::Command::new("/Users/quatton/.pyenv/versions/tsr/bin/python")
         .current_dir("/Users/quatton/Documents/GitHub/TripoSR")
-        .arg("realtime.py")
+        .arg("fal.py")
         .arg("--output-dir")
         .arg("/Users/quatton/Documents/GitHub/scrb/assets/models")
+        .arg("--no-remove-bg")
         .arg("--pipe-to-3d")
         .arg("--mc-resolution")
-        .arg("128")
+        .arg("64")
         // pipe stdin
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::null())
