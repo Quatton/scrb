@@ -6,6 +6,7 @@ pub struct LockedAxesBundle {
     locked_axes: LockedAxes,
     fall_prevention: FallPrevention,
     rest: Restitution,
+    damping: Damping,
 }
 
 #[derive(Component)]
@@ -19,6 +20,10 @@ impl Default for LockedAxesBundle {
                 | LockedAxes::ROTATION_LOCKED_Y,
             fall_prevention: FallPrevention,
             rest: Restitution::coefficient(0.0),
+            damping: Damping {
+                linear_damping: 1.0,
+                angular_damping: 1.0,
+            },
         }
     }
 }
@@ -32,6 +37,10 @@ impl LockedAxesBundle {
                 | LockedAxes::ROTATION_LOCKED_Z,
             fall_prevention: FallPrevention,
             rest: Restitution::coefficient(0.0),
+            damping: Damping {
+                linear_damping: 1.0,
+                angular_damping: 1.0,
+            },
         }
     }
 }

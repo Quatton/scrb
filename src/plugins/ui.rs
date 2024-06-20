@@ -341,10 +341,6 @@ fn spawn_listener(
                 ColliderMassProperties::Density(1.0),
                 On::<Pointer<DragStart>>::target_commands_mut(|_, cmd| {
                     cmd.insert(Pickable::IGNORE);
-                    cmd.insert(Damping {
-                        linear_damping: 1.0,
-                        angular_damping: 1.0,
-                    });
                 }), // Disable picking
                 On::<Pointer<DragEnd>>::target_commands_mut(|_, cmd| {
                     cmd.insert(Pickable::default());
@@ -352,7 +348,6 @@ fn spawn_listener(
                         angvel: Vec3::ZERO,
                         linvel: Vec3::ZERO,
                     });
-                    cmd.remove::<Damping>();
                 }), // Enable picking
             ));
 
@@ -454,18 +449,14 @@ fn spawn_listener(
                 }
                 MeshOrScene::Loading(noun) => {
                     ent.insert((
-                        // SceneBundle {
-                        //     scene: asset_server.load("models/cubed/mesh.glb#Scene0"),
-                        //     transform: transform.with_rotation(
-                        //         Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)
-                        //             * Quat::from_rotation_z(-std::f32::consts::FRAC_PI_2),
-                        //     ),
-                        //     ..default()
-                        // },
-                        transform.with_rotation(
-                            Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)
-                                * Quat::from_rotation_z(-std::f32::consts::FRAC_PI_2),
-                        ),
+                        SceneBundle {
+                            scene: asset_server.load("models/mystery_block/mesh.glb#Scene0"),
+                            transform: transform.with_rotation(
+                                Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)
+                                    * Quat::from_rotation_z(-std::f32::consts::FRAC_PI_2),
+                            ),
+                            ..default()
+                        },
                         collider,
                         MeshLoading { noun },
                     ));
@@ -544,7 +535,7 @@ fn run_python_backend(mut commands: Commands) {
         .arg("--no-remove-bg")
         .arg("--pipe-to-3d")
         .arg("--mc-resolution")
-        .arg("64")
+        .arg("32")
         // pipe stdin
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::null())
