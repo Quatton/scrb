@@ -1,15 +1,11 @@
-use std::io::Write;
-
 use backends::rapier::RapierPickable;
-use bevy::{
-    input::{mouse::MouseButtonInput, ButtonState},
-    prelude::*,
-    utils::HashMap,
-};
+use bevy::{input::mouse::MouseButtonInput, prelude::*};
 use bevy_eventlistener::event_listener::On;
 use bevy_mod_picking::prelude::*;
+use bevy_mod_reqwest::{reqwest::header, BevyReqwest, ReqResponse};
 use bevy_rapier3d::prelude::*;
 use bevy_simple_text_input::{TextInputBundle, TextInputSubmitEvent};
+use serde::{Deserialize, Serialize};
 
 use crate::components::{
     core::LockedAxesBundle,
@@ -32,30 +28,11 @@ pub enum TypingState {
     IsTyping,
 }
 
-#[derive(Component, Deref, DerefMut)]
-struct MeshLoadingPoller(Timer);
-
-impl Default for MeshLoadingPoller {
-    fn default() -> Self {
-        Self(Timer::from_seconds(1.0, TimerMode::Repeating))
-    }
-}
-
-#[derive(Component, Deref, DerefMut)]
-
-struct MeshLoadingTimeout(Timer);
-impl Default for MeshLoadingTimeout {
-    fn default() -> Self {
-        Self(Timer::from_seconds(120.0, TimerMode::Once))
-    }
-}
-
 pub struct MainUiPlugin;
 
 impl Plugin for MainUiPlugin {
     fn build(&self, app: &mut App) {
         app.init_state::<TypingState>()
-            .add_systems(Startup, run_python_backend)
             .add_systems(OnEnter(TypingState::IsTyping), setup_ui_on_typing)
             .add_systems(OnExit(TypingState::IsTyping), kill_ui_on_typing)
             .add_systems(
@@ -69,13 +46,11 @@ impl Plugin for MainUiPlugin {
             )
             .add_systems(
                 Update,
-                poll_mesh_until_loaded_or_timeout.run_if(any_with_component::<MeshLoading>),
-            )
-            .add_systems(
-                Update,
                 on_drag_end_despawn.run_if(any_with_component::<PickingAnchor>),
             )
-            .add_systems(Update, on_drag_start);
+            .add_systems(Update, on_drag_start)
+            .add_event::<FalResponse>()
+            .add_systems(Update, handle_asset_generation);
         // .add_systems(Update, click_listener);
         // .add_systems(
         //     Update,
@@ -84,7 +59,7 @@ impl Plugin for MainUiPlugin {
     }
 }
 
-fn click_listener(
+fn _click_listener(
     mut commands: Commands,
     mut mousebtn_evr: EventReader<MouseButtonInput>,
     camera_query: Query<(&Camera, &GlobalTransform), With<Camera3d>>,
@@ -129,8 +104,6 @@ fn click_listener(
             / (2.0 * (dx * tan_angle - dy)))
             .sqrt();
 
-        println!("Speed: {}, Angle: {}", speed, angle);
-
         commands.spawn((
             RapierPickable,
             RigidBody::Dynamic,
@@ -167,20 +140,6 @@ fn on_drag_start(
             .viewport_to_world(ct, event.pointer_location.position)
             .unwrap();
 
-        // let max_toi = 100.0;
-        // let solid = true;
-        // let filter = QueryFilter::default();
-
-        // let Some((_, toi)) = rapier_context.cast_ray(
-        //     cursor_ray.origin,
-        //     cursor_ray.direction.into(),
-        //     max_toi,
-        //     solid,
-        //     filter,
-        // ) else {
-        //     return;
-        // };
-
         let distance = cursor_ray
             .intersect_plane(Vec3::ZERO, Plane3d::new(Vec3::Z))
             .unwrap();
@@ -210,49 +169,6 @@ fn on_drag_start(
             ImpulseJoint::new(event.target, joint),
             LockedAxesBundle::default(),
         ));
-    }
-}
-
-fn poll_mesh_until_loaded_or_timeout(
-    time: Res<Time>,
-    mut commands: Commands,
-    mut timeout: Local<HashMap<Entity, MeshLoadingTimeout>>,
-    mut timer: Local<MeshLoadingPoller>,
-    asset_server: Res<AssetServer>,
-    query: Query<(Entity, &Transform, &MeshLoading)>,
-) {
-    if timer.tick(time.delta()).just_finished() {
-        for (entity, transform, mesh_loading) in query.iter() {
-            match timeout.get_mut(&entity) {
-                Some(timer) => {
-                    if timer.tick(time.delta()).just_finished() {
-                        {
-                            commands.entity(entity).despawn_recursive();
-                            timeout.remove(&entity);
-                        }
-                    }
-
-                    let noun = &mesh_loading.noun;
-                    if std::path::Path::new(&format!("assets/models/{noun}/mesh.glb")).exists() {
-                        println!("Successfully loaded {}", noun);
-
-                        commands
-                            .entity(entity)
-                            .remove::<MeshLoading>()
-                            .insert(SceneBundle {
-                                scene: asset_server.load(format!("models/{noun}/mesh.glb#Scene0")),
-                                transform: *transform,
-                                ..default()
-                            });
-
-                        timeout.remove(&entity);
-                    }
-                }
-                None => {
-                    timeout.insert(entity, MeshLoadingTimeout::default());
-                }
-            }
-        }
     }
 }
 
@@ -313,15 +229,62 @@ fn command_listener(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+
+struct FalOutput {
+    image: String,
+}
+
+#[derive(Deserialize, Debug, Event)]
+struct FalResponse {
+    target: Entity,
+    image_url: String,
+}
+
+impl From<ListenerInput<ReqResponse>> for FalResponse {
+    fn from(input: ListenerInput<ReqResponse>) -> Self {
+        let output: FalOutput = input.deserialize_json().unwrap();
+        FalResponse {
+            target: input.target(),
+            image_url: output.image,
+        }
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Component)]
+struct AssetGenerator(String);
+
+fn handle_asset_generation(
+    mut commands: Commands,
+    mut events: EventReader<FalResponse>,
+    asset_server: Res<AssetServer>,
+    mat_query: Query<&Handle<StandardMaterial>, With<AssetGenerator>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+
+) {
+    for event in events.read() {
+        let FalResponse { image_url, target } = event;
+
+        let texture: Handle<Image> =
+            asset_server.load(image_url);
+
+        let mat = mat_query.get(*target).unwrap();
+        let material = materials.get_mut(mat).unwrap();
+
+        material.base_color_texture = Some(texture);
+
+       commands.entity(*target).remove::<AssetGenerator>();
+    }
+}
+
 fn spawn_listener(
     mut events: EventReader<TextInputSubmitEvent>,
     mut commands: Commands,
-    asset_server: Res<AssetServer>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut dictionary: ResMut<Dictionary>,
-    mut python_stdin: ResMut<PythonStdin>,
+    mut client: BevyReqwest,
 ) {
     for event in events.read() {
         let TextInputSubmitEvent { value, .. } = event;
@@ -351,13 +314,7 @@ fn spawn_listener(
                 }), // Enable picking
             ));
 
-            let noun = parts.next().unwrap_or("ball");
-
-            let collider = match noun {
-                "cube" => Collider::cuboid(0.5, 0.5, 0.5),
-                "ball" => Collider::ball(0.5),
-                _ => Collider::cuboid(0.5, 0.5, 0.5),
-            };
+            let noun = parts.next().unwrap_or("ball").to_string();
             let mut material = StandardMaterial::default();
             let mut transform = Transform::from_xyz(0.0, 20.0, 0.0);
             for adj in parts {
@@ -401,75 +358,52 @@ fn spawn_listener(
                 }
             }
 
-            let shape: MeshOrScene = match noun {
-                "cube" => MeshOrScene::Mesh(Mesh::from(Cuboid::new(1.0, 1.0, 1.0))),
-                "ball" => MeshOrScene::Mesh(Mesh::from(Sphere::new(0.5))),
+            match noun.as_str() {
+                "ball" => {
+                    ent.insert((
+                        PbrBundle {
+                            mesh: meshes.add(Circle { radius: 0.5 }),
+                            material: materials.add(material),
+                            transform,
+                            ..default()
+                        },
+                        Collider::ball(0.5),
+                    ));
+                }
+                "cube" => {
+                    ent.insert((
+                        PbrBundle {
+                            mesh: meshes.add(Cuboid {
+                                half_size: Vec3::splat(0.5),
+                            }),
+                            material: materials.add(material),
+                            transform,
+                            ..default()
+                        },
+                        Collider::cuboid(0.5, 0.5, 0.5),
+                    ));
+                }
                 _ => {
-                    if !std::path::Path::new(&format!("assets/models/{noun}/mesh.glb")).exists() {
-                        let stdin = &mut python_stdin.stdin;
+                    let req = client
+                            
+                            .post("https://fal.run/workflows/quatton/scrb-2d")
+                            .header(header::AUTHORIZATION, format!("Key {}", std::env::var("FAL_KEY").unwrap()))
+                            .json(&serde_json::json!({
+                                "prompt": format!("{}, scribblenauts style, side profile, side view, 2d, stationary pose, simple background, subtle shading, thick outline, simple colors", noun),
+                                "negative_prompt": "anime, 3d, isometric, front-facing, portrait, front profile, moving, detailed background, colorful, realistic, detailed shading, thin outline, sketch",
+                            })).build().unwrap();
 
-                        if writeln!(stdin, "{}", noun).is_ok() {
-                            let noun = noun.to_string();
-                            MeshOrScene::Loading(noun)
-                        } else {
-                            MeshOrScene::Mesh(Mesh::from(Cuboid::new(1.0, 1.0, 1.0)))
-                        }
-                    } else {
-                        MeshOrScene::Scene(
-                            asset_server.load(format!("models/{noun}/mesh.glb#Scene0")),
-                        )
-                    }
-                }
-            };
+                    client.send_using_entity(ent.id(), req, On::send_event::<FalResponse>());
 
-            match shape {
-                MeshOrScene::Mesh(mesh) => {
                     ent.insert((
                         PbrBundle {
-                            mesh: meshes.add(mesh),
+                            mesh: meshes.add(Rectangle::from_size(Vec2::new(1.0, 1.0))),
                             material: materials.add(material),
                             transform,
                             ..default()
                         },
-                        collider,
-                    ));
-                }
-                MeshOrScene::Scene(model) => {
-                    ent.insert((
-                        SceneBundle {
-                            scene: model,
-                            transform: transform.with_rotation(
-                                Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)
-                                    * Quat::from_rotation_z(-std::f32::consts::FRAC_PI_2),
-                            ),
-                            ..default()
-                        },
-                        collider,
-                    ));
-                }
-                MeshOrScene::Loading(noun) => {
-                    ent.insert((
-                        SceneBundle {
-                            scene: asset_server.load("models/mystery_block/mesh.glb#Scene0"),
-                            transform: transform.with_rotation(
-                                Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)
-                                    * Quat::from_rotation_z(-std::f32::consts::FRAC_PI_2),
-                            ),
-                            ..default()
-                        },
-                        collider,
-                        MeshLoading { noun },
-                    ));
-                }
-                MeshOrScene::MeshHandle(handle) => {
-                    ent.insert((
-                        PbrBundle {
-                            mesh: handle,
-                            material: materials.add(material),
-                            transform,
-                            ..default()
-                        },
-                        collider,
+                        Collider::ball(0.5),
+                        AssetGenerator(noun),
                     ));
                 }
             }
@@ -507,11 +441,6 @@ pub enum MeshOrScene {
 }
 
 #[derive(Component)]
-pub struct MeshLoading {
-    noun: String,
-}
-
-#[derive(Component)]
 pub enum PbrOrScene {
     Pbr(PbrBundle),
     Scene(SceneBundle),
@@ -525,28 +454,28 @@ pub struct PythonStdin {
     pub stdin: std::process::ChildStdin,
 }
 
-fn run_python_backend(mut commands: Commands) {
-    // run subprocess
-    let mut child = std::process::Command::new("/Users/quatton/.pyenv/versions/tsr/bin/python")
-        .current_dir("/Users/quatton/Documents/GitHub/TripoSR")
-        .arg("fal.py")
-        .arg("--output-dir")
-        .arg("/Users/quatton/Documents/GitHub/scrb/assets/models")
-        .arg("--no-remove-bg")
-        .arg("--pipe-to-3d")
-        .arg("--mc-resolution")
-        .arg("32")
-        // pipe stdin
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::null())
-        // background this
-        .spawn()
-        .expect("failed to execute process");
+// fn run_python_backend(mut commands: Commands) {
+//     // run subprocess
+//     let mut child = std::process::Command::new("/Users/quatton/.pyenv/versions/tsr/bin/python")
+//         .current_dir("/Users/quatton/Documents/GitHub/TripoSR")
+//         .arg("fal.py")
+//         .arg("--output-dir")
+//         .arg("/Users/quatton/Documents/GitHub/scrb/assets/models")
+//         .arg("--no-remove-bg")
+//         .arg("--pipe-to-3d")
+//         .arg("--mc-resolution")
+//         .arg("32")
+//         // pipe stdin
+//         .stdin(std::process::Stdio::piped())
+//         .stdout(std::process::Stdio::null())
+//         // background this
+//         .spawn()
+//         .expect("failed to execute process");
 
-    commands.insert_resource(PythonStdin {
-        stdin: child.stdin.take().unwrap(),
-    });
-}
+//     commands.insert_resource(PythonStdin {
+//         stdin: child.stdin.take().unwrap(),
+//     });
+// }
 
 #[derive(Component)]
 pub struct PickingAnchor;
