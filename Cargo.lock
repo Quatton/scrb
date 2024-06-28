@@ -985,6 +985,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8050e2869fe341db6874203b5a01ff12673807a2c7c80cb829f6c7bea6997268"
 
 [[package]]
+<<<<<<< HEAD
 name = "bevy_rapier3d"
 version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -998,6 +999,8 @@ dependencies = [
 ]
 
 [[package]]
+=======
+>>>>>>> 2c97d7c (xpbd)
 name = "bevy_reflect"
 version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3532,6 +3535,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c8a99fddc9f0ba0a85884b8d14e3592853e787d581ca1816c91349b10e4eeab"
 
 [[package]]
+<<<<<<< HEAD
 name = "rapier3d"
 version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3553,6 +3557,8 @@ dependencies = [
 ]
 
 [[package]]
+=======
+>>>>>>> 2c97d7c (xpbd)
 name = "raw-window-handle"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
