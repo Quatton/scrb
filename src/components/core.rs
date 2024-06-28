@@ -5,6 +5,8 @@ use bevy_xpbd_3d::prelude::*;
 pub struct LockedAxesBundle {
     locked_axes: LockedAxes,
     fall_prevention: FallPrevention,
+    rest: Restitution,
+    damping: Damping,
 }
 
 #[derive(Component)]
@@ -13,8 +15,15 @@ pub struct FallPrevention;
 impl Default for LockedAxesBundle {
     fn default() -> Self {
         LockedAxesBundle {
-            locked_axes: LockedAxes::from_bits(0b001_000),
+            locked_axes: LockedAxes::TRANSLATION_LOCKED_Z
+                | LockedAxes::ROTATION_LOCKED_X
+                | LockedAxes::ROTATION_LOCKED_Y,
             fall_prevention: FallPrevention,
+            rest: Restitution::coefficient(0.0),
+            damping: Damping {
+                linear_damping: 1.0,
+                angular_damping: 1.0,
+            },
         }
     }
 }
@@ -22,11 +31,16 @@ impl Default for LockedAxesBundle {
 impl LockedAxesBundle {
     pub fn player() -> Self {
         LockedAxesBundle {
-            locked_axes: LockedAxes::from_bits(0b001_101),
-            // LockedAxes::TRANSLATION_LOCKED_Z
-            //     | LockedAxes::ROTATION_LOCKED_X
-            //     | LockedAxes::ROTATION_LOCKED_Z,
+            locked_axes: LockedAxes::TRANSLATION_LOCKED_Z
+                | LockedAxes::ROTATION_LOCKED_X
+                | LockedAxes::ROTATION_LOCKED_Y
+                | LockedAxes::ROTATION_LOCKED_Z,
             fall_prevention: FallPrevention,
+            rest: Restitution::coefficient(0.0),
+            damping: Damping {
+                linear_damping: 1.0,
+                angular_damping: 1.0,
+            },
         }
     }
 }

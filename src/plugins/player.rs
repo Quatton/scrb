@@ -57,7 +57,7 @@ fn setup_player(mut commands: Commands, player_assets: Res<PlayerAssets>) {
             Player::default(),
             LockedAxesBundle::player(),
             ExternalImpulse::default(),
-            ColliderDensity(1.0),
+            ColliderMassProperties::Density(99999.0),
             GravityScale(3.0),
             LinearVelocity::default(),
             AngularVelocity::default(),
@@ -103,7 +103,7 @@ fn kb_control(
             PlayerState::Jumping
         };
 
-        angvel.0 = Vec3::ZERO;
+        velocity.angvel = Vec3::ZERO;
 
         if keyboard_input.any_just_released([KeyCode::KeyA, KeyCode::KeyD]) {
             state = PlayerState::Idle;

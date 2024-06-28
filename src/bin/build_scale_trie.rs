@@ -15,14 +15,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         vec!["huge", "massive", "enormous", "immense"],  // Enhanced with synonyms for very large
         vec!["giant", "titanic", "monstrous", "towering"], // Added dramatic size descriptors
         vec!["colossal", "mammoth", "gargantuan", "monumental"], // Synonyms for extremely large
-        vec!["cosmic", "astronomical", "galactic", "stellar"], // Added space-related terms for vastness
+        vec!["cosmic", "astronomical", "galactic", "universal"], // Added space-related size words
         vec!["universal", "multiversal", "infinite", "boundless"], // Expanded to imply beyond a single universe
     ];
     let mut root = Trie::new();
 
     for (idx, scale) in scales.iter().enumerate() {
         // 4 is the base scale then 10% for each level
-        let calibrated_scale = 1.5_f32.powi(idx as i32 - 4);
+        let calibrated_scale = 1.6_f32.powi(idx as i32 - 1);
 
         for scale_word in scale {
             root.insert(scale_word, Modifier::ScaleModifier(calibrated_scale));
